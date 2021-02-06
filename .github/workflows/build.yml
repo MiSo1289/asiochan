@@ -1,0 +1,44 @@
+name: Build
+
+on: [push]
+
+env:
+  BUILD_TYPE: Debug
+  BUILD_DIR: "${{github.workspace}}/build"
+
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+    
+    strategy:
+      matrix:
+       include:
+         - cc: gcc-10
+           cxx: g++-10
+    
+    steps:
+    - uses: actions/checkout@v2
+# TODO
+#
+#    - name: Create Build Environment
+#      run: cmake -E make_directory "${BUILD_DIR}"
+#
+#    - name: Configure CMake
+#      shell: bash
+#      run: >
+#        cmake \
+#          -S "${GITHUB_WORKSPACE}" \
+#          -B "${BUILD_DIR}" \
+#          -DCMAKE_BUILD_TYPE=${BUILD_TYPE}
+#      env:
+#        CC: ${{matrix.cc}}
+#        CXX: ${{matrix.cxx}}
+#
+#    - name: Build
+#      shell: bash
+#      run: cmake --build "${BUILD_DIR}" --config ${BUILD_TYPE}
+#
+#    - name: Test
+#      working-directory: ${{github.workspace}}/build
+#      shell: bash
+#      run: ctest -C ${BUILD_TYPE}
