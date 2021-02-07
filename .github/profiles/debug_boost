@@ -11,6 +11,7 @@ os_build=Linux
 
 [options]
 asiochan:asio=boost
+boost:header_only=True
 
 [build_requires]
 
