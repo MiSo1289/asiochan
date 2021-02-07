@@ -24,5 +24,9 @@ jobs:
 
     - name: Create package
       shell: bash
-      run: conan create "${{github.workspace}}" -u -b missing \
-        -p "${{github.workspace}}/.github/profiles/${{matrix.profile}}"
+      run: >
+        conan create
+        "${{github.workspace}}"
+        -u
+        -b missing
+        -pr "${{github.workspace}}/.github/profiles/${{matrix.profile}}"
