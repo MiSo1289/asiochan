@@ -12,9 +12,11 @@ namespace asiochan
     template <sendable T, channel_buff_size buff_size, asio::execution::executor Executor>
     class channel_base
     {
-      public:
+      protected:
         [[nodiscard]] explicit channel_base(Executor const& executor)
           : shared_state_{std::make_shared<state_type>(executor)} { }
+
+        ~channel_base() noexcept = default;
 
         [[nodiscard]] auto try_read() -> asio::awaitable<std::optional<T>>
         {
@@ -110,13 +112,14 @@ namespace asiochan
     };
 
     template <sendable T, channel_buff_size buff_size, asio::execution::executor Executor>
-    class basic_channel : private channel_base<T, buff_size, Executor>
+    class basic_channel : public channel_base<T, buff_size, Executor>
     {
       private:
         using base = channel_base<T, buff_size, Executor>;
 
       public:
-        using base::channel_base;
+        [[nodiscard]] explicit basic_channel(Executor const& executor)
+          : base{executor} { }
 
         basic_channel(base const& other)
           : base{other} { }
@@ -134,13 +137,14 @@ namespace asiochan
     };
 
     template <sendable T, channel_buff_size buff_size, asio::execution::executor Executor>
-    class basic_read_channel : private channel_base<T, buff_size, Executor>
+    class basic_read_channel : public channel_base<T, buff_size, Executor>
     {
       private:
         using base = channel_base<T, buff_size, Executor>;
 
       public:
-        using base::channel_base;
+        [[nodiscard]] explicit basic_read_channel(Executor const& executor)
+          : base{executor} { }
 
         basic_read_channel(base const& other)
           : base{other} { }
@@ -154,13 +158,14 @@ namespace asiochan
     };
 
     template <sendable T, channel_buff_size buff_size, asio::execution::executor Executor>
-    class basic_write_channel : private channel_base<T, buff_size, Executor>
+    class basic_write_channel : public channel_base<T, buff_size, Executor>
     {
       private:
         using base = channel_base<T, buff_size, Executor>;
 
       public:
-        using base::channel_base;
+        [[nodiscard]] explicit basic_write_channel(Executor const& executor)
+          : base{executor} { }
 
         basic_write_channel(base const& other)
           : base{other} { }
