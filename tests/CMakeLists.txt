@@ -1,3 +1,5 @@
+find_package(Threads REQUIRED)
+
 add_executable(asiochan_tests)
 add_test(
   NAME asiochan_tests
@@ -15,6 +17,7 @@ target_link_libraries(
 
   PRIVATE
   CONAN_PKG::catch2
+  Threads::Threads
   asiochan::asiochan
 )
 
