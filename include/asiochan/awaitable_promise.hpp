@@ -106,7 +106,7 @@ namespace asiochan
 
         [[nodiscard]] auto valid() const noexcept -> bool
         {
-            return not impl_.empty();
+            return impl_.has_value();
         }
 
         [[nodiscard]] auto get_awaitable() -> asio::awaitable<T>
@@ -122,7 +122,7 @@ namespace asiochan
       private:
         using handler_sig = void(std::exception_ptr error, T value);
         using impl_type = std::optional<
-            boost::asio::detail::awaitable_handler<asio::any_io_executor, std::exception_ptr, T>>;
+            asio::detail::awaitable_handler<asio::any_io_executor, std::exception_ptr, T>>;
 
         impl_type impl_;
     };
@@ -168,7 +168,7 @@ namespace asiochan
 
         [[nodiscard]] auto valid() const noexcept -> bool
         {
-            return static_cast<bool>(impl_);
+            return impl_.has_value();
         }
 
         [[nodiscard]] auto get_awaitable() -> asio::awaitable<void>
@@ -184,7 +184,7 @@ namespace asiochan
       private:
         using handler_sig = void(std::exception_ptr error);
         using impl_type = std::optional<
-            boost::asio::detail::awaitable_handler<asio::any_io_executor, std::exception_ptr>>;
+            asio::detail::awaitable_handler<asio::any_io_executor, std::exception_ptr>>;
 
         impl_type impl_;
     };

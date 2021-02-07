@@ -46,10 +46,10 @@ class AsioChan(ConanFile):
 
     def build(self):
         cmake = CMake(self)
+        cmake.definitions["ASIOCHAN_USE_STANDALONE_ASIO"] = self.options.asio == "standalone"
 
         cmake.configure()
         cmake.build()
-        cmake.definitions["ASIOCHAN_USE_STANDALONE_ASIO"] = self.options.asio == "standalone"
 
         if tools.get_env("CONAN_RUN_TESTS", True):
             cmake.test()

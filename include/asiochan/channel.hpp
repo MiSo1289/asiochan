@@ -1,5 +1,6 @@
 #pragma once
 
+#include <concepts>
 #include <memory>
 
 #include "asiochan/asio.hpp"
@@ -13,16 +14,23 @@ namespace asiochan
     class channel_base
     {
       public:
+        [[nodiscard]] explicit channel_base(Executor const& executor)
+          : shared_state_{std::make_shared<state_type>(executor)}
+          , executor_{executor} { }
+
+        // clang-format off
+        template <std::derived_from<asio::execution_context> Ctx>
+        requires requires (Ctx& ctx) { { ctx.get_executor() } -> asio::execution::executor; }
+        // clang-format on
+        [[nodiscard]] explicit channel_base(Ctx& ctx)
+          : channel_base{ctx.get_executor()} { }
+
         [[nodiscard]] auto get_executor() const -> Executor
         {
             return executor_;
         }
 
       protected:
-        [[nodiscard]] explicit channel_base(Executor const& executor)
-          : shared_state_{std::make_shared<state_type>(executor)}
-          , executor_{executor} { }
-
         ~channel_base() noexcept = default;
 
         [[nodiscard]] auto try_read() -> asio::awaitable<std::optional<T>>
@@ -66,10 +74,24 @@ namespace asiochan
     template <channel_buff_size buff_size, asio::execution::executor Executor>
     class channel_base<void, buff_size, Executor>
     {
-      protected:
+      public:
         [[nodiscard]] explicit channel_base(Executor const& executor)
-          : shared_state_{std::make_shared<state_type>(executor)} { }
+          : shared_state_{std::make_shared<state_type>(executor)}
+          , executor_{executor} { }
 
+        // clang-format off
+        template <std::derived_from<asio::execution_context> Ctx>
+        requires requires (Ctx& ctx) { { ctx.get_executor() } -> asio::execution::executor; }
+        // clang-format on
+        [[nodiscard]] explicit channel_base(Ctx& ctx)
+          : channel_base{ctx.get_executor()} { }
+
+        [[nodiscard]] auto get_executor() const -> Executor
+        {
+            return executor_;
+        }
+
+      protected:
         [[nodiscard]] auto try_read() -> asio::awaitable<bool>
         {
             auto slot = detail::channel_slot<void>{};
@@ -98,6 +120,7 @@ namespace asiochan
         using state_type = detail::channel_shared_state<void, buff_size, Executor>;
 
         std::shared_ptr<state_type> shared_state_;
+        Executor executor_;
     };
 
     template <sendable T, channel_buff_size buff_size, asio::execution::executor Executor>
@@ -107,8 +130,7 @@ namespace asiochan
         using base = channel_base<T, buff_size, Executor>;
 
       public:
-        [[nodiscard]] explicit basic_channel(Executor const& executor)
-          : base{executor} { }
+        using base::channel_base;
 
         [[nodiscard]] basic_channel(base const& other)
           : base{other} { }
@@ -132,8 +154,7 @@ namespace asiochan
         using base = channel_base<T, buff_size, Executor>;
 
       public:
-        [[nodiscard]] explicit basic_read_channel(Executor const& executor)
-          : base{executor} { }
+        using base::channel_base;
 
         [[nodiscard]] basic_read_channel(base const& other)
           : base{other} { }
@@ -153,8 +174,7 @@ namespace asiochan
         using base = channel_base<T, buff_size, Executor>;
 
       public:
-        [[nodiscard]] explicit basic_write_channel(Executor const& executor)
-          : base{executor} { }
+        using base::channel_base;
 
         [[nodiscard]] basic_write_channel(base const& other)
           : base{other} { }

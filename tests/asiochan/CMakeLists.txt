@@ -2,5 +2,6 @@ target_sources(
   asiochan_tests
 
   PRIVATE
-  test_asiochan.cpp
+  test_channel.cpp
+  test_main.cpp
 )

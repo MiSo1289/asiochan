@@ -61,11 +61,6 @@ namespace asiochan::detail
             return count_ == size;
         }
 
-        [[nodiscard]] static constexpr auto can_fill() noexcept -> bool
-        {
-            return true;
-        }
-
         void enqueue(channel_slot<T>& from) noexcept
         {
             assert(not full());
@@ -75,6 +70,7 @@ namespace asiochan::detail
         void dequeue(channel_slot<T>& to) noexcept
         {
             assert(not empty());
+            --count_;
             transfer(buff_[std::exchange(head_, (head_ + 1) % size)], to);
         }
 
@@ -98,7 +94,7 @@ namespace asiochan::detail
 
         [[nodiscard]] auto full() const noexcept -> bool
         {
-            if constexpr (can_fill())
+            if constexpr (size != unbounded_channel_buff)
             {
                 return count_ == size;
             }
@@ -106,11 +102,6 @@ namespace asiochan::detail
             {
                 return false;
             }
-        }
-
-        [[nodiscard]] static constexpr auto can_fill() noexcept -> bool
-        {
-            return size != unbounded_channel_buff;
         }
 
         void enqueue(channel_slot<void>& from) noexcept
@@ -139,11 +130,6 @@ namespace asiochan::detail
         }
 
         [[nodiscard]] auto full() const noexcept -> bool
-        {
-            return true;
-        }
-
-        [[nodiscard]] static constexpr auto can_fill() noexcept -> bool
         {
             return true;
         }
