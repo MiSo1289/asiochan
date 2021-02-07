@@ -33,13 +33,9 @@ namespace asiochan
 {
 #ifdef ASIOCHAN_USE_STANDALONE_ASIO
     namespace asio = ::asio;
-
-    using error_code = std::error_code;
-    using error_category = std::error_category;
+    namespace system = ::std;
 #else
-    namespace asio = boost::asio;
-
-    using error_code = boost::system::error_code;
-    using error_category = boost::system::error_category;
+    namespace asio = ::boost::asio;
+    namespace system = ::boost::system;
 #endif
 }  // namespace asiochan

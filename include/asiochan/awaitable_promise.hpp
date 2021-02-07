@@ -12,24 +12,54 @@
 
 namespace asiochan
 {
-    class broken_coro_promise : public std::exception
+    enum class awaitable_promise_errc
     {
-      public:
-        [[nodiscard]] constexpr auto what() const noexcept
-            -> char const* override
-        {
-            return "Broken coro promise";
-        }
+        broken_promise = 1,
     };
 
+    [[nodiscard]] inline auto make_error_code(awaitable_promise_errc const errc) noexcept -> system::error_code
+    {
+        class awaitable_promise_category final : public system::error_category
+        {
+          public:
+            [[nodiscard]] auto name() const noexcept -> char const* override
+            {
+                return "awaitable promise";
+            }
+
+            [[nodiscard]] auto message(int const errc) const -> std::string override
+            {
+                switch (static_cast<awaitable_promise_errc>(errc))
+                {
+                case awaitable_promise_errc::broken_promise:
+                    return "broken promise";
+                default:
+                    return "unknown";
+                }
+            }
+        };
+
+        static constinit auto category = awaitable_promise_category{};
+        return system::error_code{static_cast<int>(errc), category};
+    }
+}  // namespace asiochan
+
+template <>
+struct asiochan::system::is_error_code_enum<asiochan::awaitable_promise_errc>
+  : std::true_type
+{
+};
+
+namespace asiochan
+{
     template <typename T>
-    class coro_promise;
+    class awaitable_promise;
 
     template <sendable_value T>
-    class coro_promise<T>
+    class awaitable_promise<T>
     {
       public:
-        coro_promise() noexcept = default;
+        awaitable_promise() noexcept = default;
 
         void set_value(T const& value)
         {
@@ -61,11 +91,16 @@ namespace asiochan
             impl_.reset();
         }
 
+        void set_error_code(system::error_code const error)
+        {
+            set_exception(std::make_exception_ptr(system::system_error{error}));
+        }
+
         void reset()
         {
             if (valid())
             {
-                set_exception(std::make_exception_ptr(broken_coro_promise{}));
+                set_error_code(awaitable_promise_errc::broken_promise);
             }
         }
 
@@ -93,10 +128,10 @@ namespace asiochan
     };
 
     template <>
-    class coro_promise<void>
+    class awaitable_promise<void>
     {
       public:
-        coro_promise() noexcept = default;
+        awaitable_promise() noexcept = default;
 
         void set_value()
         {
@@ -118,11 +153,16 @@ namespace asiochan
             impl_.reset();
         }
 
+        void set_error_code(system::error_code const error)
+        {
+            set_exception(std::make_exception_ptr(system::system_error{error}));
+        }
+
         void reset()
         {
             if (valid())
             {
-                set_exception(std::make_exception_ptr(broken_coro_promise{}));
+                set_error_code(awaitable_promise_errc::broken_promise);
             }
         }
 

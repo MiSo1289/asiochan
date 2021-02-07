@@ -6,8 +6,8 @@
 #include <queue>
 
 #include "asiochan/asio.hpp"
+#include "asiochan/awaitable_promise.hpp"
 #include "asiochan/channel_buff_size.hpp"
-#include "asiochan/coro_promise.hpp"
 
 namespace asiochan::detail
 {
@@ -195,7 +195,7 @@ namespace asiochan::detail
     template <sendable T>
     struct channel_waiter_list_node
     {
-        coro_promise<void> promise;
+        awaitable_promise<void> promise;
         channel_slot<T>* slot;
         channel_waiter_list_node* next = nullptr;
     };

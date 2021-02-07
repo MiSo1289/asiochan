@@ -18,8 +18,6 @@
 
 namespace asio = asiochan::asio;
 
-// TODO debug this
-
 [[nodiscard]] auto reader(asiochan::read_channel<int> channel) -> asio::awaitable<int>
 {
     co_return co_await channel.read();
