@@ -2,10 +2,6 @@ name: Build
 
 on: [push]
 
-env:
-  # To run conan
-  PATH: "${PATH}:${HOME}/.local/bin"
-
 jobs:
   build:
     runs-on: ubuntu-20.04
@@ -18,8 +14,13 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v2
 
+    - name: Setup PATH
+      run: echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+      shell: bash
+
     - name: Setup conan
       run: pip install conan
+      shell: bash
 
     - name: Create package
       run: >
@@ -27,3 +28,4 @@ jobs:
           --profile="${{github.workspace}}/.github/profiles/${{matrix.profile}}" \
           --update \
           --build=missing
+      shell: bash
