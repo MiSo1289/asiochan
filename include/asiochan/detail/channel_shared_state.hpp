@@ -12,7 +12,7 @@
 namespace asiochan::detail
 {
     template <sendable T>
-    class channel_value_slot
+    class channel_slot
     {
       public:
         auto read() noexcept -> T
@@ -27,7 +27,7 @@ namespace asiochan::detail
             value_.emplace(std::move(value));
         }
 
-        friend void transfer(channel_value_slot& from, channel_value_slot& to) noexcept
+        friend void transfer(channel_slot& from, channel_slot& to) noexcept
         {
             assert(from.value_.has_value());
             assert(not to.value_.has_value());
@@ -39,10 +39,10 @@ namespace asiochan::detail
     };
 
     template <>
-    class [[no_unique_address]] channel_value_slot<void>
+    class channel_slot<void>
     {
       public:
-        friend void transfer(channel_value_slot&, channel_value_slot&) noexcept
+        friend void transfer(channel_slot&, channel_slot&) noexcept
         {
         }
     };
@@ -61,13 +61,18 @@ namespace asiochan::detail
             return count_ == size;
         }
 
-        void enqueue(channel_value_slot<T>& from) noexcept
+        [[nodiscard]] static constexpr auto can_fill() noexcept -> bool
+        {
+            return true;
+        }
+
+        void enqueue(channel_slot<T>& from) noexcept
         {
             assert(not full());
             transfer(from, buff_[(head_ + count_++) % size]);
         }
 
-        void dequeue(channel_value_slot<T>& to) noexcept
+        void dequeue(channel_slot<T>& to) noexcept
         {
             assert(not empty());
             transfer(buff_[std::exchange(head_, (head_ + 1) % size)], to);
@@ -76,7 +81,7 @@ namespace asiochan::detail
       private:
         std::size_t head_ = 0;
         std::size_t count_ = 0;
-        std::array<channel_value_slot<T>, size> buff_;
+        std::array<channel_slot<T>, size> buff_;
     };
 
     // clang-format off
@@ -93,23 +98,28 @@ namespace asiochan::detail
 
         [[nodiscard]] auto full() const noexcept -> bool
         {
-            if constexpr (size == unbounded_channel_buff)
-            {
-                return false;
-            }
-            else
+            if constexpr (can_fill())
             {
                 return count_ == size;
             }
+            else
+            {
+                return false;
+            }
         }
 
-        void enqueue(channel_value_slot<void>& from) noexcept
+        [[nodiscard]] static constexpr auto can_fill() noexcept -> bool
+        {
+            return size != unbounded_channel_buff;
+        }
+
+        void enqueue(channel_slot<void>& from) noexcept
         {
             assert(not full());
             ++count_;
         }
 
-        void dequeue(channel_value_slot<void>& to) noexcept
+        void dequeue(channel_slot<void>& to) noexcept
         {
             assert(not empty());
             --count_;
@@ -133,12 +143,17 @@ namespace asiochan::detail
             return true;
         }
 
-        [[noreturn]] void enqueue(channel_value_slot<void>& from) noexcept
+        [[nodiscard]] static constexpr auto can_fill() noexcept -> bool
+        {
+            return true;
+        }
+
+        [[noreturn]] void enqueue(channel_slot<void>& from) noexcept
         {
             std::terminate();
         }
 
-        [[noreturn]] void dequeue(channel_value_slot<void>& to) noexcept
+        [[noreturn]] void dequeue(channel_slot<void>& to) noexcept
         {
             std::terminate();
         }
@@ -161,95 +176,35 @@ namespace asiochan::detail
             return false;
         }
 
-        void enqueue(channel_value_slot<T>& from) noexcept
+        void enqueue(channel_slot<T>& from)
         {
-            queue_.push_back(from.read());
+            queue_.push(from.read());
         }
 
-        void dequeue(channel_value_slot<T>& to) noexcept
+        void dequeue(channel_slot<T>& to) noexcept
         {
             assert(not empty());
-            to.write(std::move(queue.front()));
-            queue.pop_front();
+            to.write(std::move(queue_.front()));
+            queue_.pop();
         }
 
       private:
         std::queue<T> queue_;
     };
 
-    template <sendable T, channel_buff_size buff_size, asio::execution::executor Executor>
-    class channel_shared_state
+    template <sendable T>
+    struct channel_waiter_list_node
     {
-      public:
-        [[nodiscard]] explicit channel_shared_state(Executor const& executor)
-          : strand_{executor} { }
+        coro_promise<void> promise;
+        channel_slot<T>* slot;
+        channel_waiter_list_node* next = nullptr;
+    };
 
-        [[nodiscard]] auto try_read(channel_value_slot<T>& to) -> asio::awaitable<bool>
-        {
-            co_await asio::dispatch(strand_);
-
-            auto const success = try_read_impl(to);
-
-            co_await asio::post(co_await asio::this_coro::executor);
-            co_return success;
-        }
-
-        [[nodiscard]] auto read(channel_value_slot<T>& to) -> asio::awaitable<void>
-        {
-            co_await asio::dispatch(strand_);
-
-            if (not try_read_impl(to))
-            {
-                // Wait until a writer is ready.
-                auto node = list_node{.slot = &to};
-                enqueue_reader(node);
-                co_await node.promise.get_awaitable();
-            }
-
-            co_await asio::post(co_await asio::this_coro::executor);
-        }
-
-        [[nodiscard]] auto try_write(channel_value_slot<T>& from) -> asio::awaitable<bool>
-        {
-            co_await asio::dispatch(strand_);
-
-            auto const success = try_write_impl(from);
-
-            co_await asio::post(co_await asio::this_coro::executor);
-            co_return success;
-        }
-
-        [[nodiscard]] auto write(channel_value_slot<T>& from) -> asio::awaitable<void>
-        {
-            co_await asio::dispatch(strand_);
-
-            if (not try_write_impl(from))
-            {
-                // Wait until a reader is ready
-                auto node = list_node{.slot = &from};
-                enqueue_writer(node);
-                co_await node.promise.get_awaitable();
-            }
-
-            co_await asio::post(co_await asio::this_coro::executor);
-        }
-
-      private:
-        struct list_node
-        {
-            coro_promise<void> promise;
-            detail::channel_value_slot<T>* slot;
-            list_node* next = nullptr;
-        };
-
-        asio::strand<Executor> strand_;
-        list_node* reader_list_first_ = nullptr;
-        list_node* reader_list_last_ = nullptr;
-        list_node* writer_list_first_ = nullptr;
-        list_node* writer_list_last_ = nullptr;
-        channel_buffer<T, buff_size> buffer_;
-
-        void enqueue_reader(list_node& node) noexcept
+    template <sendable T>
+    class channel_shared_state_reader_list_base
+    {
+      protected:
+        void enqueue_reader(channel_waiter_list_node<T>& node) noexcept
         {
             if (not reader_list_first_)
             {
@@ -263,21 +218,7 @@ namespace asiochan::detail
             }
         }
 
-        void enqueue_writer(list_node& node) noexcept
-        {
-            if (not writer_list_first_)
-            {
-                writer_list_first_ = &node;
-                writer_list_last_ = &node;
-            }
-            else
-            {
-                writer_list_last_->next = &node;
-                writer_list_last_ = &node;
-            }
-        }
-
-        auto dequeue_reader() noexcept -> list_node*
+        auto dequeue_reader() noexcept -> channel_waiter_list_node<T>*
         {
             if (reader_list_first_)
             {
@@ -293,7 +234,30 @@ namespace asiochan::detail
             return nullptr;
         }
 
-        auto dequeue_writer() noexcept -> list_node*
+      private:
+        channel_waiter_list_node<T>* reader_list_first_ = nullptr;
+        channel_waiter_list_node<T>* reader_list_last_ = nullptr;
+    };
+
+    template <sendable T, bool enabled>
+    class channel_shared_state_writer_list_base
+    {
+      protected:
+        void enqueue_writer(channel_waiter_list_node<T>& node) noexcept
+        {
+            if (not writer_list_first_)
+            {
+                writer_list_first_ = &node;
+                writer_list_last_ = &node;
+            }
+            else
+            {
+                writer_list_last_->next = &node;
+                writer_list_last_ = &node;
+            }
+        }
+
+        auto dequeue_writer() noexcept -> channel_waiter_list_node<T>*
         {
             if (writer_list_first_)
             {
@@ -309,28 +273,170 @@ namespace asiochan::detail
             return nullptr;
         }
 
-        auto try_read_impl(channel_value_slot<T>& to) -> bool
+      private:
+        channel_waiter_list_node<T>* writer_list_first_ = nullptr;
+        channel_waiter_list_node<T>* writer_list_last_ = nullptr;
+    };
+
+    template <sendable T>
+    class channel_shared_state_writer_list_base<T, false>
+    {
+    };
+
+    template <sendable T, channel_buff_size buff_size, asio::execution::executor Executor>
+    class channel_shared_state
+      : private channel_shared_state_reader_list_base<T>,
+        private channel_shared_state_writer_list_base<T, buff_size != unbounded_channel_buff>
+    {
+      public:
+        using strand_type = asio::strand<Executor>;
+        using buffer_type = channel_buffer<T, buff_size>;
+        using node_type = channel_waiter_list_node<T>;
+        using slot_type = channel_slot<T>;
+
+        [[nodiscard]] explicit channel_shared_state(Executor const& executor)
+          : strand_{executor} { }
+
+        [[nodiscard]] auto try_read(slot_type& to) -> asio::awaitable<bool>
         {
-            if (not buffer_.empty())
+            co_await asio::dispatch(strand_, asio::use_awaitable);
+            auto success = false;
+            // Wrapped in optional, because the default constructor is expensive on MSVC
+            auto exception = std::optional<std::exception_ptr>{};
+
+            try
             {
-                // Get a value from the buffer.
-                buffer_.dequeue(to);
-
-                if (auto const writer = dequeue_writer())
-                {
-                    // Buffer was full with writers waiting.
-                    // Wake the oldest writer and store his value in the buffer.
-                    buffer_.enqueue(writer->slot);
-                    writer->promise.set_value();
-                }
-
-                return true;
+                success = try_read_impl(to);
+            }
+            catch (...)
+            {
+                exception = std::current_exception();
             }
 
-            if (auto const writer = dequeue_writer())
+            co_await asio::post(co_await asio::this_coro::executor, asio::use_awaitable);
+            if (exception)
+            {
+                std::rethrow_exception(std::move(*exception));
+            }
+            co_return success;
+        }
+
+        [[nodiscard]] auto read(slot_type& to) -> asio::awaitable<void>
+        {
+            co_await asio::dispatch(strand_, asio::use_awaitable);
+            auto exception = std::optional<std::exception_ptr>{};
+
+            try
+            {
+                if (not try_read_impl(to))
+                {
+                    // Wait until a writer is ready.
+                    auto node = node_type{.slot = &to};
+                    this->enqueue_reader(node);
+                    co_await node.promise.get_awaitable();
+                }
+            }
+            catch (...)
+            {
+                exception = std::current_exception();
+            }
+
+            co_await asio::post(co_await asio::this_coro::executor, asio::use_awaitable);
+            if (exception)
+            {
+                std::rethrow_exception(std::move(*exception));
+            }
+        }
+
+        [[nodiscard]] auto try_write(slot_type& from) -> asio::awaitable<bool>
+        {
+            co_await asio::dispatch(strand_, asio::use_awaitable);
+            auto success = false;
+            auto exception = std::optional<std::exception_ptr>{};
+
+            try
+            {
+                success = try_write_impl(from);
+            }
+            catch (...)
+            {
+                exception = std::current_exception();
+            }
+
+            co_await asio::post(co_await asio::this_coro::executor, asio::use_awaitable);
+            if (exception)
+            {
+                std::rethrow_exception(std::move(*exception));
+            }
+            co_return success;
+        }
+
+        [[nodiscard]] auto write(slot_type& from) -> asio::awaitable<void>
+        {
+            co_await asio::dispatch(strand_, asio::use_awaitable);
+            auto exception = std::optional<std::exception_ptr>{};
+
+            try
+            {
+                if (not try_write_impl(from))
+                {
+                    if constexpr (buff_size != unbounded_channel_buff)
+                    {
+                        // Wait until a reader is ready
+                        auto node = node_type{.slot = &from};
+                        this->enqueue_writer(node);
+                        co_await node.promise.get_awaitable();
+                    }
+                    else
+                    {
+                        // With an unbounded buffer, the write always succeeds
+                        // without waiting.
+                    }
+                }
+            }
+            catch (...)
+            {
+                exception = std::current_exception();
+            }
+
+            co_await asio::post(co_await asio::this_coro::executor, asio::use_awaitable);
+            if (exception)
+            {
+                std::rethrow_exception(std::move(*exception));
+            }
+        }
+
+      private:
+        strand_type strand_;
+        [[no_unique_address]] buffer_type buffer_;
+
+        auto try_read_impl(slot_type& to) -> bool
+        {
+            if constexpr (buff_size != 0)
+            {
+                if (not buffer_.empty())
+                {
+                    // Get a value from the buffer.
+                    buffer_.dequeue(to);
+
+                    if constexpr (buff_size != unbounded_channel_buff)
+                    {
+                        if (auto const writer = this->dequeue_writer())
+                        {
+                            // Buffer was full with writers waiting.
+                            // Wake the oldest writer and store his value in the buffer.
+                            buffer_.enqueue(*writer->slot);
+                            writer->promise.set_value();
+                        }
+                    }
+
+                    return true;
+                }
+            }
+            else if (auto const writer = this->dequeue_writer())
             {
                 // Get a value directly from a waiting writer.
-                transfer(writer->slot, to);
+                transfer(*writer->slot, to);
                 writer->promise.set_value();
 
                 return true;
@@ -339,23 +445,26 @@ namespace asiochan::detail
             return false;
         }
 
-        auto try_write_impl(channel_value_slot<T>& from) -> bool
+        auto try_write_impl(slot_type& from) -> bool
         {
-            if (auto const reader = dequeue_reader())
+            if (auto const reader = this->dequeue_reader())
             {
                 // Send the value directly to a waiting reader
-                transfer(from, reader->slot);
+                transfer(from, *reader->slot);
                 reader->promise.set_value();
 
                 return true;
             }
 
-            if (not buffer_.full())
+            if constexpr (buff_size != 0)
             {
-                // Store the value in the buffer.
-                buffer_.enqueue(from);
+                if (not buffer_.full())
+                {
+                    // Store the value in the buffer.
+                    buffer_.enqueue(from);
 
-                return true;
+                    return true;
+                }
             }
 
             return false;

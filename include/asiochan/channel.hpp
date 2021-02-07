@@ -12,13 +12,13 @@ namespace asiochan
     template <sendable T, channel_buff_size buff_size, asio::execution::executor Executor>
     class channel_base
     {
-      protected:
+      public:
         [[nodiscard]] explicit channel_base(Executor const& executor)
           : shared_state_{std::make_shared<state_type>(executor)} { }
 
         [[nodiscard]] auto try_read() -> asio::awaitable<std::optional<T>>
         {
-            auto slot = detail::channel_value_slot<T>{};
+            auto slot = detail::channel_slot<T>{};
             if (co_await shared_state_->try_read(slot))
             {
                 co_return slot.read();
@@ -28,21 +28,40 @@ namespace asiochan
 
         [[nodiscard]] auto read() -> asio::awaitable<T>
         {
-            auto slot = detail::channel_value_slot<T>{};
+            auto slot = detail::channel_slot<T>{};
             co_await shared_state_->read(slot);
             co_return slot.read();
         }
 
-        [[nodiscard]] auto try_write(T value) -> asio::awaitable<bool>
+        [[nodiscard]] auto try_write(T const& value) -> asio::awaitable<bool>
         {
-            auto slot = detail::channel_value_slot<T>{};
-            slot.write(std::move(value));
+            auto slot = detail::channel_slot<T>{};
+            slot.write(T{value});
             co_return co_await shared_state_->try_write(slot);
         }
 
-        [[nodiscard]] auto write(T value) -> asio::awaitable<void>
+        [[nodiscard]] auto try_write(T&& value) -> asio::awaitable<bool>
         {
-            auto slot = detail::channel_value_slot<T>{};
+            auto slot = detail::channel_slot<T>{};
+            slot.write(std::move(value));
+            if (not co_await shared_state_->try_write(slot))
+            {
+                value = slot.read();
+                co_return false;
+            }
+            co_return true;
+        }
+
+        [[nodiscard]] auto write(T const& value) -> asio::awaitable<void>
+        {
+            auto slot = detail::channel_slot<T>{};
+            slot.write(T{value});
+            co_await shared_state_->write(slot);
+        }
+
+        [[nodiscard]] auto write(T&& value) -> asio::awaitable<void>
+        {
+            auto slot = detail::channel_slot<T>{};
             slot.write(std::move(value));
             co_await shared_state_->write(slot);
         }
@@ -62,25 +81,25 @@ namespace asiochan
 
         [[nodiscard]] auto try_read() -> asio::awaitable<bool>
         {
-            auto slot = detail::channel_value_slot<void>{};
+            auto slot = detail::channel_slot<void>{};
             co_return co_await shared_state_->try_read(slot);
         }
 
         [[nodiscard]] auto read() -> asio::awaitable<void>
         {
-            auto slot = detail::channel_value_slot<T>{};
+            auto slot = detail::channel_slot<void>{};
             co_await shared_state_->read(slot);
         }
 
         [[nodiscard]] auto try_write() -> asio::awaitable<bool>
         {
-            auto slot = detail::channel_value_slot<T>{};
+            auto slot = detail::channel_slot<void>{};
             co_return co_await shared_state_->try_write(slot);
         }
 
         [[nodiscard]] auto write() -> asio::awaitable<void>
         {
-            auto slot = detail::channel_value_slot<T>{};
+            auto slot = detail::channel_slot<void>{};
             co_await shared_state_->write(slot);
         }
 
@@ -91,7 +110,7 @@ namespace asiochan
     };
 
     template <sendable T, channel_buff_size buff_size, asio::execution::executor Executor>
-    class basic_channel : public channel_base<T, buff_size, Executor>
+    class basic_channel : private channel_base<T, buff_size, Executor>
     {
       private:
         using base = channel_base<T, buff_size, Executor>;
@@ -115,7 +134,7 @@ namespace asiochan
     };
 
     template <sendable T, channel_buff_size buff_size, asio::execution::executor Executor>
-    class basic_read_channel : public channel_base<T, buff_size, Executor>
+    class basic_read_channel : private channel_base<T, buff_size, Executor>
     {
       private:
         using base = channel_base<T, buff_size, Executor>;
@@ -135,7 +154,7 @@ namespace asiochan
     };
 
     template <sendable T, channel_buff_size buff_size, asio::execution::executor Executor>
-    class basic_write_channel : public channel_base<T, buff_size, Executor>
+    class basic_write_channel : private channel_base<T, buff_size, Executor>
     {
       private:
         using base = channel_base<T, buff_size, Executor>;
@@ -161,10 +180,10 @@ namespace asiochan
     using read_channel = basic_read_channel<T, buff_size, asio::any_io_executor>;
 
     template <sendable T, channel_buff_size buff_size = 0>
-    using write_channel = basic_write_channel<T, buff_size, asio::any_io_executor>
+    using write_channel = basic_write_channel<T, buff_size, asio::any_io_executor>;
 
-        template <sendable T>
-        using unbounded_channel = channel<T, unbounded_channel_buff>;
+    template <sendable T>
+    using unbounded_channel = channel<T, unbounded_channel_buff>;
 
     template <sendable T>
     using unbounded_read_channel = read_channel<T, unbounded_channel_buff>;

@@ -11,6 +11,7 @@
 #include <asio/dispatch.hpp>
 #include <asio/post.hpp>
 #include <asio/strand.hpp>
+#include <asio/this_coro.hpp>
 #include <asio/use_awaitable.hpp>
 
 #else
@@ -22,6 +23,7 @@
 #include <boost/asio/dispatch.hpp>
 #include <boost/asio/post.hpp>
 #include <boost/asio/strand.hpp>
+#include <boost/asio/this_coro.hpp>
 #include <boost/asio/use_awaitable.hpp>
 #include <boost/system/error_code.hpp>
 

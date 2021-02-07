@@ -2,12 +2,20 @@ cmake_minimum_required(VERSION 3.17)
 set(ASIOCHAN_VERSION 0.1.0)
 project(AsioChan VERSION "${STRING_ADAPTER_VERSION}")
 
+include(CheckCXXCompilerFlag)
+
 option(ASIOCHAN_USE_STANDALONE_ASIO "Use standalone ASIO instead of Boost.ASIO" OFF)
 
 add_library(asiochan INTERFACE)
 add_library(asiochan::asiochan ALIAS asiochan)
 target_compile_features(asiochan INTERFACE cxx_std_20)
 target_include_directories(asiochan INTERFACE include)
+
+set(COROUTINES_FLAG -fcoroutines)
+check_cxx_compiler_flag("${COROUTINES_FLAG}" COMPILER_HAS_COROUTINES_FLAG)
+if (COMPILER_HAS_COROUTINES_FLAG)
+  target_compile_options(asiochan INTERFACE "${COROUTINES_FLAG}")
+endif()
 
 if (ASIOCHAN_USE_STANDALONE_ASIO)
   target_compile_definitions(asiochan INTERFACE ASIOCHAN_USE_STANDALONE_ASIO)

@@ -3,6 +3,7 @@
 #include <cassert>
 #include <exception>
 #include <functional>
+#include <optional>
 #include <stdexcept>
 #include <utility>
 
@@ -25,20 +26,39 @@ namespace asiochan
     class coro_promise;
 
     template <sendable_value T>
-    class coro_promise<T> {
+    class coro_promise<T>
+    {
       public:
         coro_promise() noexcept = default;
 
-        void set_value(T value)
+        void set_value(T const& value)
         {
             assert(valid());
-            std::exchange(impl_, {})(nullptr, std::move(value));
+            auto executor = asio::get_associated_executor(*impl_);
+            asio::post(
+                std::move(executor),
+                std::bind_front(std::move(*impl_), nullptr, value));
+            impl_.reset();
+        }
+
+        void set_value(T&& value)
+        {
+            assert(valid());
+            auto executor = asio::get_associated_executor(*impl_);
+            asio::post(
+                std::move(executor),
+                std::bind_front(std::move(*impl_), nullptr, std::move(value)));
+            impl_.reset();
         }
 
         void set_exception(std::exception_ptr error)
         {
             assert(valid());
-            std::exchange(impl_, {})(std::move(error), T{});
+            auto executor = asio::get_associated_executor(*impl_);
+            asio::post(
+                std::move(executor),
+                std::bind_front(std::move(*impl_), std::move(error), T{}));
+            impl_.reset();
         }
 
         void reset()
@@ -59,21 +79,15 @@ namespace asiochan
             assert(not valid());
             return asio::async_initiate<decltype(asio::use_awaitable), handler_sig>(
                 [this](auto&& resumeCb) mutable {
-                    impl_ = [resumeCb = std::forward<decltype(resumeCb)>(resumeCb)](
-                                std::exception_ptr error, T result) mutable {
-                        auto const executor = asio::get_associated_executor(resumeCb);
-                        asio::post(
-                            executor,
-                            std::bind_front(
-                                std::move(resumeCb), std::move(error), std::move(result)));
-                    };
+                    impl_.emplace(std::move(resumeCb));
                 },
                 asio::use_awaitable);
         }
 
       private:
         using handler_sig = void(std::exception_ptr error, T value);
-        using impl_type = std::function<handler_sig>;
+        using impl_type = std::optional<
+            boost::asio::detail::awaitable_handler<asio::any_io_executor, std::exception_ptr, T>>;
 
         impl_type impl_;
     };
@@ -87,13 +101,21 @@ namespace asiochan
         void set_value()
         {
             assert(valid());
-            std::exchange(impl_, {})(nullptr, std::move(value));
+            auto executor = asio::get_associated_executor(*impl_);
+            asio::post(
+                std::move(executor),
+                std::bind_front(std::move(*impl_), nullptr));
+            impl_.reset();
         }
 
         void set_exception(std::exception_ptr error)
         {
             assert(valid());
-            std::exchange(impl_, {})(std::move(error), T{});
+            auto executor = asio::get_associated_executor(*impl_);
+            asio::post(
+                std::move(executor),
+                std::bind_front(std::move(*impl_), std::move(error)));
+            impl_.reset();
         }
 
         void reset()
@@ -106,28 +128,23 @@ namespace asiochan
 
         [[nodiscard]] auto valid() const noexcept -> bool
         {
-            return not impl_.empty();
+            return static_cast<bool>(impl_);
         }
 
-        [[nodiscard]] auto get_awaitable() -> asio::awaitable<T>
+        [[nodiscard]] auto get_awaitable() -> asio::awaitable<void>
         {
             assert(not valid());
             return asio::async_initiate<decltype(asio::use_awaitable), handler_sig>(
                 [this](auto&& resumeCb) mutable {
-                    impl_ = [resumeCb = std::forward<decltype(resumeCb)>(resumeCb)](
-                                std::exception_ptr error) mutable {
-                        auto const executor = asio::get_associated_executor(resumeCb);
-                        asio::post(
-                            executor,
-                            std::bind_front(std::move(resumeCb), std::move(error)));
-                    };
+                    impl_.emplace(std::move(resumeCb));
                 },
                 asio::use_awaitable);
         }
 
       private:
         using handler_sig = void(std::exception_ptr error);
-        using impl_type = std::function<handler_sig>;
+        using impl_type = std::optional<
+            boost::asio::detail::awaitable_handler<asio::any_io_executor, std::exception_ptr>>;
 
         impl_type impl_;
     };

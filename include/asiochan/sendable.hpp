@@ -12,6 +12,6 @@ namespace asiochan
         and std::is_nothrow_move_assignable_v<T>;
 
     template <typename T>
-    concept sendable = sendable_value<T> or std::is_void_v<T>
+    concept sendable = sendable_value<T> or std::is_void_v<T>;
     // clang-format on
 }  // namespace asiochan
