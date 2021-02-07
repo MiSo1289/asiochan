@@ -1,32 +1,27 @@
 name: Build
 
-on: [push]
+on: [ push ]
 
 jobs:
   build:
     runs-on: ubuntu-20.04
-    
+
     strategy:
       matrix:
-        profile: [debug_boost, debug_standalone]
-    
+        profile: [ debug_boost, debug_standalone ]
+
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v2
+      - name: Checkout repository
+        uses: actions/checkout@v2
 
-    - name: Setup PATH
-      shell: bash
-      run: echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+      - name: Setup PATH
+        shell: bash
+        run: echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
 
-    - name: Setup conan
-      shell: bash
-      run: pip install conan
+      - name: Setup conan
+        shell: bash
+        run: pip install conan
 
-    - name: Create package
-      shell: bash
-      run: >
-        conan create
-        "${{github.workspace}}"
-        -u
-        -b missing
-        -pr "${{github.workspace}}/.github/profiles/${{matrix.profile}}"
+      - name: Create package
+        shell: bash
+        run: conan create "${{github.workspace}}" -u -b missing -pr "${{github.workspace}}/.github/profiles/${{matrix.profile}}"
