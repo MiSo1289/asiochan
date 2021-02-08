@@ -30,6 +30,10 @@ namespace asiochan
             return executor_;
         }
 
+        [[nodiscard]] friend auto operator==(
+            channel_base const& lhs,
+            channel_base const& rhs) noexcept -> bool = default;
+
       protected:
         ~channel_base() noexcept = default;
 
