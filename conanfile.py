@@ -23,6 +23,7 @@ class AsioChan(ConanFile):
     generators = "cmake"
     settings = ("os", "compiler", "arch", "build_type")
     exports_sources = (
+        "examples/*",
         "include/*",
         "tests/*",
         "CMakeLists.txt",
