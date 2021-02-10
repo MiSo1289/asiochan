@@ -1,5 +1,3 @@
-find_package(Threads REQUIRED)
-
 add_executable(asiochan_tests)
 add_test(
   NAME asiochan_tests
