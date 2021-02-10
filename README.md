@@ -9,13 +9,7 @@ using namespace asiochan;
 This library provides golang-inspired channel types to be used with ASIO `awaitable` coroutines.
 Channels allow bidirectional message passing and synchronization between coroutines.
 Both standalone and boost versions of ASIO are supported.
-
-### Selecting ASIO distribution
-
-By default, Boost.ASIO is used. To use with standalone ASIO:
-- When consuming as a Conan package - set the option `asio=standalone`
-- When consuming as a CMake subproject - set the cache variable `ASIOCHAN_USE_STANDALONE_ASIO=ON`
-- When consuming as headers - define the `ASIOCHAN_USE_STANDALONE_ASIO` macro
+See the [installing](#installing) section on how to install and select the ASIO distribution used.
 
 ### Example
 
@@ -183,3 +177,20 @@ This is a 'minimal useful version', with some limitations:
 - No support for concurrent waiting on multiple channels.
 
 This can usually be worked around by sending sum types, like `variant` and `optional`.
+
+### Installing
+
+#### Selecting ASIO distribution
+
+By default, Boost.ASIO is used. To use with standalone ASIO:
+- When consuming as a Conan package - set the option `asio=standalone`
+- When consuming as a CMake subproject - set the cache variable `ASIOCHAN_USE_STANDALONE_ASIO=ON`
+- When consuming as headers - define the `ASIOCHAN_USE_STANDALONE_ASIO` macro
+
+#### Conan package
+
+If you use Conan to manage dependencies, you can get this library from [my artifactory](https://miso1289.jfrog.io/ui/packages/conan:%2F%2Fasiochan?name=asiochan&type=packages):
+```console
+$ conan remote add miso1289 https://miso1289.jfrog.io/artifactory/api/conan/miso1289
+$ conan install asiochan/0.1.0@miso1289/stable
+```
