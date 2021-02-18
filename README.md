@@ -101,28 +101,28 @@ The `sendable` concept defines the requirements for types that can be sent via c
 ```c++
 #include <asiochan/channel.hpp>
 
-template <sendable T, channel_buff_size buff_size, asio::execution::executor Executor>
+template <sendable T, channel_buff_size buff_size_, asio::execution::executor Executor>
 class basic_channel;
  
-template <sendable T, channel_buff_size buff_size, asio::execution::executor Executor>
+template <sendable T, channel_buff_size buff_size_, asio::execution::executor Executor>
 class basic_read_channel;
 
-template <sendable T, channel_buff_size buff_size, asio::execution::executor Executor>
+template <sendable T, channel_buff_size buff_size_, asio::execution::executor Executor>
 class basic_write_channel;
 ```
 
-Bidirectional, read and write channel types are interconvertible as long as the value type, buffer size, and executor match. `buff_size` (`size_t`) specifies the size of the internal buffer. When 0, the writer will always wait for a read. A special value `unbounded_channel_buff` can be used, in which case the buffer is dynamic and writers never wait.
+Bidirectional, read and write channel types are interconvertible as long as the value type, buffer size, and executor match. `buff_size_` (`size_t`) specifies the size of the internal buffer. When 0, the writer will always wait for a read. A special value `unbounded_channel_buff` can be used, in which case the buffer is dynamic and writers never wait.
 
 #### Convenience typedefs
 ```c++
-template <sendable T, channel_buff_size buff_size = 0>
-using channel = basic_channel<T, buff_size, asio::any_io_executor>;
+template <sendable T, channel_buff_size buff_size_ = 0>
+using channel = basic_channel<T, buff_size_, asio::any_io_executor>;
 
-template <sendable T, channel_buff_size buff_size = 0>
-using read_channel = basic_read_channel<T, buff_size, asio::any_io_executor>;
+template <sendable T, channel_buff_size buff_size_ = 0>
+using read_channel = basic_read_channel<T, buff_size_, asio::any_io_executor>;
 
-template <sendable T, channel_buff_size buff_size = 0>
-using write_channel = basic_write_channel<T, buff_size, asio::any_io_executor>;
+template <sendable T, channel_buff_size buff_size_ = 0>
+using write_channel = basic_write_channel<T, buff_size_, asio::any_io_executor>;
 
 template <sendable T>
 using unbounded_channel = channel<T, unbounded_channel_buff>;

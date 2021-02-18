@@ -15,6 +15,7 @@ namespace asiochan
     enum class awaitable_promise_errc
     {
         broken_promise = 1,
+        result_already_set,
     };
 
     [[nodiscard]] inline auto make_error_code(awaitable_promise_errc const errc) noexcept -> system::error_code
@@ -33,6 +34,8 @@ namespace asiochan
                 {
                 case awaitable_promise_errc::broken_promise:
                     return "broken promise";
+                case awaitable_promise_errc::result_already_set:
+                    return "result already set";
                 default:
                     return "unknown";
                 }

@@ -5,17 +5,23 @@
 
 #include "asiochan/asio.hpp"
 #include "asiochan/channel_buff_size.hpp"
+#include "asiochan/channel_concepts.hpp"
 #include "asiochan/detail/channel_shared_state.hpp"
 #include "asiochan/sendable.hpp"
 
 namespace asiochan
 {
-    template <sendable T, channel_buff_size buff_size, asio::execution::executor Executor>
+    template <sendable T,
+              channel_buff_size buff_size,
+              channel_flags flags,
+              asio::execution::executor Executor>
     class channel_base
     {
       public:
+        using shared_state_type = detail::channel_shared_state<T, buff_size, Executor>;
+
         [[nodiscard]] explicit channel_base(Executor const& executor)
-          : shared_state_{std::make_shared<state_type>(executor)}
+          : shared_state_{std::make_shared<shared_state_type>(executor)}
           , executor_{executor} { }
 
         // clang-format off
@@ -25,21 +31,49 @@ namespace asiochan
         [[nodiscard]] explicit channel_base(Ctx& ctx)
           : channel_base{ctx.get_executor()} { }
 
+        template <channel_flags other_flags>
+        [[nodiscard]] channel_base(
+            channel_base<T, buff_size, other_flags, Executor> const& other)
+            // clang-format off
+            requires ((other_flags & flags) == flags)
+          // clang-format on
+          : shared_state_{other.shared_state_}
+          , executor_{other.executor_}
+        {
+        }
+
+        template <channel_flags other_flags>
+        [[nodiscard]] channel_base(
+            channel_base<T, buff_size, other_flags, Executor>&& other)
+        // clang-format off
+        requires ((other_flags & flags) == flags)
+        // clang-format on
+            : shared_state_{std::move(other.shared_state_)}
+            , executor_{std::move(other.executor_)}
+        {
+        }
+
         [[nodiscard]] auto get_executor() const -> Executor
         {
             return executor_;
         }
 
+        [[nodiscard]] auto shared_state() noexcept -> shared_state_type&
+        {
+            return *shared_state_;
+        }
+
         [[nodiscard]] friend auto operator==(
             channel_base const& lhs,
-            channel_base const& rhs) noexcept -> bool = default;
+            channel_base const& rhs) noexcept -> bool
+            = default;
 
       protected:
         ~channel_base() noexcept = default;
 
         [[nodiscard]] auto try_read() -> asio::awaitable<std::optional<T>>
         {
-            auto slot = detail::channel_slot<T>{};
+            auto slot = detail::send_slot<T>{};
             if (co_await shared_state_->try_read(slot))
             {
                 co_return slot.read();
@@ -49,29 +83,27 @@ namespace asiochan
 
         [[nodiscard]] auto read() -> asio::awaitable<T>
         {
-            auto slot = detail::channel_slot<T>{};
+            auto slot = detail::send_slot<T>{};
             co_await shared_state_->read(slot);
             co_return slot.read();
         }
 
         [[nodiscard]] auto try_write(T value) -> asio::awaitable<bool>
         {
-            auto slot = detail::channel_slot<T>{};
+            auto slot = detail::send_slot<T>{};
             slot.write(std::move(value));
             co_return co_await shared_state_->try_write(slot);
         }
 
         [[nodiscard]] auto write(T value) -> asio::awaitable<void>
         {
-            auto slot = detail::channel_slot<T>{};
+            auto slot = detail::send_slot<T>{};
             slot.write(std::move(value));
             co_await shared_state_->write(slot);
         }
 
       private:
-        using state_type = detail::channel_shared_state<T, buff_size, Executor>;
-
-        std::shared_ptr<state_type> shared_state_;
+        std::shared_ptr<shared_state_type> shared_state_;
         Executor executor_;
     };
 
@@ -98,25 +130,25 @@ namespace asiochan
       protected:
         [[nodiscard]] auto try_read() -> asio::awaitable<bool>
         {
-            auto slot = detail::channel_slot<void>{};
+            auto slot = detail::send_slot<void>{};
             co_return co_await shared_state_->try_read(slot);
         }
 
         [[nodiscard]] auto read() -> asio::awaitable<void>
         {
-            auto slot = detail::channel_slot<void>{};
+            auto slot = detail::send_slot<void>{};
             co_await shared_state_->read(slot);
         }
 
         [[nodiscard]] auto try_write() -> asio::awaitable<bool>
         {
-            auto slot = detail::channel_slot<void>{};
+            auto slot = detail::send_slot<void>{};
             co_return co_await shared_state_->try_write(slot);
         }
 
         [[nodiscard]] auto write() -> asio::awaitable<void>
         {
-            auto slot = detail::channel_slot<void>{};
+            auto slot = detail::send_slot<void>{};
             co_await shared_state_->write(slot);
         }
 
