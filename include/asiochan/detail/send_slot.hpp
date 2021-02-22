@@ -35,6 +35,10 @@ namespace asiochan::detail
     class send_slot<void>
     {
       public:
+        static void read() noexcept { }
+
+        static void write() noexcept { }
+
         friend void transfer(send_slot&, send_slot&) noexcept
         {
         }

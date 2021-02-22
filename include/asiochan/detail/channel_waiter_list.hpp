@@ -1,7 +1,7 @@
 #pragma once
 
-#include <atomic>
 #include <cstddef>
+#include <mutex>
 
 #include "asiochan/async_promise.hpp"
 #include "asiochan/detail/send_slot.hpp"
@@ -13,8 +13,20 @@ namespace asiochan::detail
     struct select_wait_context
     {
         async_promise<select_waiter_token> promise;
-        std::atomic_bool avail_flag = true;
+        std::mutex mutex;
+        bool avail_flag = true;
     };
+
+    auto claim(std::same_as<select_wait_context> auto&... contexts) -> bool
+    {
+        auto const lock = std::scoped_lock{contexts.mutex...};
+        if ((contexts.avail_flag and ...))
+        {
+            ((contexts.avail_flag = false), ...);
+            return true;
+        }
+        return false;
+    }
 
     template <sendable T>
     struct channel_waiter_list_node
@@ -77,7 +89,7 @@ namespace asiochan::detail
             }
         }
 
-        auto dequeue_first_available() noexcept -> node_type*
+        auto dequeue_first_available(std::same_as<select_wait_context> auto&... contexts) noexcept -> node_type*
         {
             while (first_)
             {
@@ -93,8 +105,17 @@ namespace asiochan::detail
                     node->next = nullptr;
                 }
 
-                if (node->select_wait_context->avail_flag.exchange(false))
+                auto const lock = std::scoped_lock{node->select_wait_context.mutex, contexts.mutex...};
+                if (node->select_wait_context->avail_flag)
                 {
+                    if (not (contexts.avail_flag and ...))
+                    {
+                        return nullptr;
+                    }
+
+                    node->select_wait_context->avail_flag = false;
+                    ((contexts.avail_flag = false), ...);
+
                     return node;
                 }
             }

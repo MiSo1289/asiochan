@@ -19,6 +19,7 @@ namespace asiochan
     {
       public:
         using shared_state_type = detail::channel_shared_state<T, buff_size, Executor>;
+        using send_type = T;
 
         [[nodiscard]] explicit channel_base(Executor const& executor)
           : shared_state_{std::make_shared<shared_state_type>(executor)}
