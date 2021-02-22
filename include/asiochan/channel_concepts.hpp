@@ -12,15 +12,18 @@ namespace asiochan
     };
 
     // clang-format off
-    template <typename T, typename SendType>
-    concept channel_type = requires (T& channel)
+    template <typename T>
+    concept any_channel_type = requires (T& channel)
     {
         typename T::shared_state_type;
 
-        requires detail::channel_shared_state_type<typename T::shared_state_type, SendType>;
-
-        { channel.shared_state() } -> std::same_as<typename T::shared_state_type&>;
+        { channel.shared_state() } noexcept -> std::same_as<typename T::shared_state_type&>;
     };
+
+    template <typename T, typename SendType>
+    concept channel_type
+        = any_channel_type<T>
+          and detail::channel_shared_state_type<typename T::shared_state_type, SendType>;
 
     template <typename T, typename SendType>
     concept readable_channel_type

@@ -6,15 +6,15 @@
 #include <optional>
 
 #include "asiochan/asio.hpp"
-#include "asiochan/awaitable_promise.hpp"
+#include "asiochan/async_promise.hpp"
 
 namespace asiochan
 {
     template <sendable T, typename Mutex = std::mutex>
-    class synchronized_awaitable_promise;
+    class synchronized_async_promise;
 
     template <sendable_value T, typename Mutex>
-    class synchronized_awaitable_promise<T, Mutex>
+    class synchronized_async_promise<T, Mutex>
     {
       public:
         template <std::convertible_to<T> U>
@@ -29,7 +29,7 @@ namespace asiochan
             {
                 if (ready_value_ or ready_exception_)
                 {
-                    throw system::system_error{awaitable_promise_errc::result_already_set};
+                    throw system::system_error{async_promise_errc::result_already_set};
                 }
 
                 ready_value_.emplace(std::forward<U>(value));
@@ -47,7 +47,7 @@ namespace asiochan
             {
                 if (ready_value_ or ready_exception_)
                 {
-                    throw system::system_error{awaitable_promise_errc::result_already_set};
+                    throw system::system_error{async_promise_errc::result_already_set};
                 }
 
                 ready_exception_.emplace(std::move(error));
@@ -65,14 +65,14 @@ namespace asiochan
         }
 
       private:
-        awaitable_promise<T> promise_;
+        async_promise<T> promise_;
         std::optional<T> ready_value_ = std::nullopt;
         std::optional<std::exception_ptr> ready_exception_ = std::nullopt;
         Mutex mutex_;
     };
 
     template <typename Mutex>
-    class synchronized_awaitable_promise<void, Mutex>
+    class synchronized_async_promise<void, Mutex>
     {
       public:
         void set_value()
@@ -86,7 +86,7 @@ namespace asiochan
             {
                 if (ready_value_ or ready_exception_)
                 {
-                    throw system::system_error{awaitable_promise_errc::result_already_set};
+                    throw system::system_error{async_promise_errc::result_already_set};
                 }
 
                 ready_value_ = true;
@@ -104,7 +104,7 @@ namespace asiochan
             {
                 if (ready_value_ or ready_exception_)
                 {
-                    throw system::system_error{awaitable_promise_errc::result_already_set};
+                    throw system::system_error{async_promise_errc::result_already_set};
                 }
 
                 ready_exception_.emplace(std::move(error));
@@ -117,7 +117,7 @@ namespace asiochan
         }
 
       private:
-        awaitable_promise<T> promise_;
+        async_promise<T> promise_;
         bool ready_value_ = false;
         std::optional<std::exception_ptr> ready_exception_ = std::nullopt;
         Mutex mutex_;

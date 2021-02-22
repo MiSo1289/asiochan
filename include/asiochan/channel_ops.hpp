@@ -2,7 +2,7 @@
 
 #include <concepts>
 
-#include "asiochan/detail/channel_concepts.hpp"
+#include "asiochan/channel_concepts.hpp"
 #include "asiochan/detail/channel_shared_state.hpp"
 #include "asiochan/detail/channel_waiter_list.hpp"
 #include "asiochan/detail/send_slot.hpp"
@@ -54,12 +54,34 @@ namespace asiochan
     // clang-format on
 
     template <sendable T>
-    class read_result
+    class channel_op_result_base
+    {
+      public:
+        explicit channel_op_result_base(channel_type<T> auto& channel)
+          : shared_state_{&channel.shared_state()} { }
+
+        auto matches(channel_type_any auto const&) const noexcept -> bool
+        {
+            return false;
+        }
+
+        auto matches(channel_type<T> auto const& channel) const noexcept -> bool
+        {
+            return &channel.shared_state() == shared_state_;
+        }
+
+      private:
+        void* shared_state_ = nullptr;
+    };
+
+    template <sendable T>
+    class read_result : public channel_op_result_base<T>
     {
       public:
         template <std::convertible_to<T> U>
-        explicit read_result(U&& value)
-          : value_{std::forward<U>(value)}
+        read_result(U&& value, channel_type<T>& channel)
+          : channel_op_result_base{channel}
+          , value_{std::forward<U>(value)}
         {
         }
 
@@ -90,6 +112,12 @@ namespace asiochan
     template <>
     class read_result<void>
     {
+      public:
+        explicit read_result(detail::channel_shared_state_type<void> auto& shared_state)
+          : shared_state_{&shared_state} { }
+
+      private:
+        void* shared_state_ = nullptr;
     };
 
     template <sendable T>
@@ -148,17 +176,26 @@ namespace asiochan
                 co_return co_await submit_impl(std::true_type{}, &select_ctx, base_token, &wait_state);
             }
 
-            auto clear_wait(std::optional<std::size_t> successful_alternative)
+            auto clear_wait(
+                std::optional<std::size_t> const successful_alternative,
+                wait_state_type& wait_state)
                 -> asio::awaitable<void>
             {
-                co_await std::apply(
-                    [&](auto&... chan_states) -> asio::awaitable<void> {
-                        ((co_await [&](auto& chan_state) -> asio::awaitable<void> {
-                             co_await asio::dispatch(chan_state.get_strand(), asio::use_awaitable);
-                         }()),
-                         ...);
-                    },
-                    chan_states_);
+                co_await([&]<std::size_t... indices>(std::index_sequence<indices...>)->asio::awaitable<void> {
+                    (co_await([&](detail::channel_shared_state_type auto& channel_state) -> asio::awaitable<void> {
+                         constexpr auto channel_index = indices;
+
+                         if (channel_index == successful_alternative)
+                         {
+                             // No need to clear wait on a successful sub-operation
+                             co_return;
+                         }
+
+                         co_await asio::dispatch(channel_state.strand(), asio::use_awaitable);
+                         channel_state.reader_list().dequeue(wait_state.waiter_nodes[channel_index]);
+                     }(std::get<indices>(channels_).shared_state())),
+                     ...);
+                }(std::index_sequence_for<ChannelsHead, ChannelsTail...>{}));
             }
 
             auto get_result() noexcept -> read_result<T>
@@ -180,10 +217,10 @@ namespace asiochan
             {
                 co_return co_await([&]<std::size_t... indices>(std::index_sequence<indices...>)->asio::awaitable<select_op_submit_result> {
                     auto const is_ready
-                        = ((co_await [&]<detail::channel_shared_state ChannelState>(ChannelState& channel_state) -> asio::awaitable<bool> {
+                        = ((co_await [&]<detail::channel_shared_state_type ChannelState>(ChannelState& channel_state) -> asio::awaitable<bool> {
                                constexpr auto channel_index = indices;
 
-                               co_await asio::dispatch(channel_state.get_strand(), asio::use_awaitable);
+                               co_await asio::dispatch(channel_state.strand(), asio::use_awaitable);
 
                                if constexpr (ChannelState::buff_size != 0)
                                {
@@ -194,7 +231,7 @@ namespace asiochan
 
                                        if constexpr (not ChannelState::write_never_waits)
                                        {
-                                           if (auto const writer = channel_state.writer_list().dequeue_waiter())
+                                           if (auto const writer = channel_state.writer_list().dequeue_first_available())
                                            {
                                                // Buffer was full with writers waiting.
                                                // Wake the oldest writer and store his value in the buffer.
@@ -206,7 +243,7 @@ namespace asiochan
                                        co_return true;
                                    }
                                }
-                               else if (auto const writer = channel_state.writer_list().dequeue_waiter())
+                               else if (auto const writer = channel_state.writer_list().dequeue_first_available())
                                {
                                    // Get a value directly from a waiting writer.
                                    transfer(*writer->slot, slot_);
@@ -222,7 +259,147 @@ namespace asiochan
                                    waiter_node.token = *base_token + channel_index;
                                    waiter_node.next = nullptr;
 
-                                   channel_state.reader_list().enqueue_waiter(waiter_node);
+                                   channel_state.reader_list().enqueue(waiter_node);
+                               }
+
+                               co_return false;
+                           }(std::get<indices>(channels).shared_state()))
+                           or ...);
+
+                    co_return is_ready
+                        ? select_op_submit_result::completed
+                        : select_op_submit_result::waiting;
+                }(std::index_sequence_for<ChannelsHead, ChannelsTail...>{}));
+            }
+        };
+
+        template <sendable T, writable_channel_type<T> ChannelsHead, readable_channel_type<T>... ChannelsTail>
+        class write
+        {
+          public:
+            using result_type = write_result<T>;
+            using slot_type = detail::send_slot<T>;
+            using waiter_node_type = detail::channel_waiter_list_node<T>;
+
+            struct wait_state_type
+            {
+                std::array<channel_waiter_list_node<T>, num_alternatives> waiter_nodes;
+            };
+
+            static constexpr auto num_alternatives = 1u + sizeof...(Channels);
+            static constexpr auto always_ready = false;
+
+            explicit read(ChannelsHead&, channels_head, ChannelsTail&... channels_tail) noexcept
+              : channels_{channels_head, channels_tail...}
+            {
+            }
+
+            read(read const&) = delete;
+            read(read&&) = delete;
+
+            [[nodiscard]] auto strand() -> typename ChannelsHead::shared_state_type::strand_type&
+            {
+                return std::get<0>(channels_).shared_state().strand();
+            }
+
+            [[nodiscard]] auto submit_if_ready() -> asio::awaitable<select_op_submit_result>
+            {
+                co_return co_await submit_impl(std::false_type{});
+            }
+
+            [[nodiscard]] auto submit_with_wait(
+                detail::select_wait_context& select_ctx,
+                detail::select_waiter_token const base_token,
+                wait_state_type& wait_state)
+                -> asio::awaitable<select_op_submit_result>
+            {
+                co_return co_await submit_impl(std::true_type{}, &select_ctx, base_token, &wait_state);
+            }
+
+            auto clear_wait(
+                std::optional<std::size_t> const successful_alternative,
+                wait_state_type& wait_state)
+                -> asio::awaitable<void>
+            {
+                co_await([&]<std::size_t... indices>(std::index_sequence<indices...>)->asio::awaitable<void> {
+                    (co_await([&](detail::channel_shared_state_type auto& channel_state) -> asio::awaitable<void> {
+                         constexpr auto channel_index = indices;
+
+                         if (channel_index == successful_alternative)
+                         {
+                             // No need to clear wait on a successful sub-operation
+                             co_return;
+                         }
+
+                         co_await asio::dispatch(channel_state.strand(), asio::use_awaitable);
+                         channel_state.reader_list().dequeue(wait_state.waiter_nodes[channel_index]);
+                     }(std::get<indices>(channels_).shared_state())),
+                     ...);
+                }(std::index_sequence_for<ChannelsHead, ChannelsTail...>{}));
+            }
+
+            auto get_result() noexcept -> write_result<T>
+            {
+                return write_result<T>{};
+            }
+
+          private:
+            std::tuple<ChannelsHead&, ChannelsTail&...> channels_;
+            slot_type slot_;
+
+            template <bool enable_wait>
+            [[nodiscard]] auto submit_impl(
+                std::bool_constant<enable_wait>,
+                detail::select_wait_context* const select_ctx = nullptr,
+                std::optional<detail::select_waiter_token> const base_token = std::nullopt,
+                wait_state_type* const wait_state = nullptr)
+                -> asio::awaitable<select_op_submit_result>
+            {
+                co_return co_await([&]<std::size_t... indices>(std::index_sequence<indices...>)->asio::awaitable<select_op_submit_result> {
+                    auto const is_ready
+                        = ((co_await [&]<detail::channel_shared_state_type ChannelState>(ChannelState& channel_state) -> asio::awaitable<bool> {
+                               constexpr auto channel_index = indices;
+
+                               co_await asio::dispatch(channel_state.strand(), asio::use_awaitable);
+
+                               if constexpr (ChannelState::buff_size != 0)
+                               {
+                                   if (not buffer_.empty())
+                                   {
+                                       // Get a value from the buffer.
+                                       buffer_.dequeue(slot_);
+
+                                       if constexpr (not ChannelState::write_never_waits)
+                                       {
+                                           if (auto const writer = channel_state.writer_list().dequeue_first_available())
+                                           {
+                                               // Buffer was full with writers waiting.
+                                               // Wake the oldest writer and store his value in the buffer.
+                                               buffer_.enqueue(*writer->slot);
+                                               detail::notify_waiter(*writer);
+                                           }
+                                       }
+
+                                       co_return true;
+                                   }
+                               }
+                               else if (auto const writer = channel_state.writer_list().dequeue_first_available())
+                               {
+                                   // Get a value directly from a waiting writer.
+                                   transfer(*writer->slot, slot_);
+
+                                   co_return true;
+                               }
+                               else if constexpr (enable_wait)
+                               {
+                                   // Wait for a value.
+                                   auto& waiter_node = wait_state->waiter_nodes[channel_index];
+                                   waiter_node.select_wait_context = select_ctx;
+                                   waiter_node.slot = &slot_;
+                                   waiter_node.token = *base_token + channel_index;
+                                   waiter_node.next = nullptr;
+
+                                   channel_state.reader_list().enqueue(waiter_node);
                                }
 
                                co_return false;
@@ -250,6 +427,11 @@ namespace asiochan
                 -> asio::awaitable<select_op_submit_result>
             {
                 co_return select_op_submit_result::ready;
+            }
+
+            auto get_result() const noexcept -> no_result_t
+            {
+                return no_result;
             }
         };
     }  // namespace ops

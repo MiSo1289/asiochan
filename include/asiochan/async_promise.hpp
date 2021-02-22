@@ -12,15 +12,15 @@
 
 namespace asiochan
 {
-    enum class awaitable_promise_errc
+    enum class async_promise_errc
     {
         broken_promise = 1,
         result_already_set,
     };
 
-    [[nodiscard]] inline auto make_error_code(awaitable_promise_errc const errc) noexcept -> system::error_code
+    [[nodiscard]] inline auto make_error_code(async_promise_errc const errc) noexcept -> system::error_code
     {
-        class awaitable_promise_category final : public system::error_category
+        class async_promise_category final : public system::error_category
         {
           public:
             [[nodiscard]] auto name() const noexcept -> char const* override
@@ -30,11 +30,11 @@ namespace asiochan
 
             [[nodiscard]] auto message(int const errc) const -> std::string override
             {
-                switch (static_cast<awaitable_promise_errc>(errc))
+                switch (static_cast<async_promise_errc>(errc))
                 {
-                case awaitable_promise_errc::broken_promise:
+                case async_promise_errc::broken_promise:
                     return "broken promise";
-                case awaitable_promise_errc::result_already_set:
+                case async_promise_errc::result_already_set:
                     return "result already set";
                 default:
                     return "unknown";
@@ -42,13 +42,13 @@ namespace asiochan
             }
         };
 
-        static constinit auto category = awaitable_promise_category{};
+        static constinit auto category = async_promise_category{};
         return system::error_code{static_cast<int>(errc), category};
     }
 }  // namespace asiochan
 
 template <>
-struct asiochan::system::is_error_code_enum<asiochan::awaitable_promise_errc>
+struct asiochan::system::is_error_code_enum<asiochan::async_promise_errc>
   : std::true_type
 {
 };
@@ -56,13 +56,13 @@ struct asiochan::system::is_error_code_enum<asiochan::awaitable_promise_errc>
 namespace asiochan
 {
     template <typename T>
-    class awaitable_promise;
+    class async_promise;
 
     template <sendable_value T>
-    class awaitable_promise<T>
+    class async_promise<T>
     {
       public:
-        awaitable_promise() noexcept = default;
+        async_promise() noexcept = default;
 
         void set_value(T const& value)
         {
@@ -103,7 +103,7 @@ namespace asiochan
         {
             if (valid())
             {
-                set_error_code(awaitable_promise_errc::broken_promise);
+                set_error_code(async_promise_errc::broken_promise);
             }
         }
 
@@ -131,10 +131,10 @@ namespace asiochan
     };
 
     template <>
-    class awaitable_promise<void>
+    class async_promise<void>
     {
       public:
-        awaitable_promise() noexcept = default;
+        async_promise() noexcept = default;
 
         void set_value()
         {
@@ -165,7 +165,7 @@ namespace asiochan
         {
             if (valid())
             {
-                set_error_code(awaitable_promise_errc::broken_promise);
+                set_error_code(async_promise_errc::broken_promise);
             }
         }
 
