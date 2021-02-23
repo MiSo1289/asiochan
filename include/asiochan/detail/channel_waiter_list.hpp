@@ -43,7 +43,7 @@ namespace asiochan::detail
     template <sendable T>
     void notify_waiter(channel_waiter_list_node<T>& waiter)
     {
-        waiter.select_wait_context->promise.set_value(waiter.token);
+        waiter.ctx->promise.set_value(waiter.token);
     }
 
     template <sendable T>
@@ -107,15 +107,15 @@ namespace asiochan::detail
                     node->next = nullptr;
                 }
 
-                auto const lock = std::scoped_lock{node->select_wait_context.mutex, contexts.mutex...};
-                if (node->select_wait_context->avail_flag)
+                auto const lock = std::scoped_lock{node->ctx->mutex, contexts.mutex...};
+                if (node->ctx->avail_flag)
                 {
                     if (not(contexts.avail_flag and ...))
                     {
                         return nullptr;
                     }
 
-                    node->select_wait_context->avail_flag = false;
+                    node->ctx->avail_flag = false;
                     ((contexts.avail_flag = false), ...);
 
                     return node;

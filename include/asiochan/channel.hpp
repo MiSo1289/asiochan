@@ -77,6 +77,9 @@ namespace asiochan
         ~channel_base() noexcept = default;
 
       private:
+        template <sendable, channel_buff_size, channel_flags, asio::execution::executor>
+        friend class channel_base;
+
         std::shared_ptr<shared_state_type> shared_state_;
         Executor executor_;
     };
@@ -121,8 +124,8 @@ namespace asiochan
 
     template <sendable T, channel_buff_size buff_size, asio::execution::executor Executor>
     class basic_write_channel
-        : public channel_base<T, buff_size, writable, Executor>,
-          public detail::channel_method_ops<T, buff_size, writable, basic_write_channel<T, buff_size, Executor>>
+      : public channel_base<T, buff_size, writable, Executor>,
+        public detail::channel_method_ops<T, buff_size, writable, basic_write_channel<T, buff_size, Executor>>
     {
       private:
         using base = basic_write_channel::channel_base;

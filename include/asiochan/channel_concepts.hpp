@@ -27,11 +27,11 @@ namespace asiochan
 
     template <typename T>
     concept any_readable_channel_type
-        = any_channel_type<T> and (T::flags & channel_flags::readable);
+        = any_channel_type<T> and (static_cast<bool>(T::flags & channel_flags::readable));
 
     template <typename T>
     concept any_writable_channel_type
-        = any_channel_type<T> and (T::flags & channel_flags::writable);
+        = any_channel_type<T> and (static_cast<bool>(T::flags & channel_flags::writable));
 
     template <typename T>
     concept any_bidirectional_channel_type
@@ -47,7 +47,7 @@ namespace asiochan
 
     template <typename T, typename SendType>
     concept writable_channel_type
-        = channel_type<T, SendType> and any_readable_channel_type<T>;
+        = channel_type<T, SendType> and any_writable_channel_type<T>;
 
     template <typename T, typename SendType>
     concept bidirectional_channel_type

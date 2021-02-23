@@ -39,14 +39,13 @@ namespace asiochan::detail
         }
 
         // clang-format off
-        template <std::convertible_to<T> U>
+        [[nodiscard]] auto try_write(T value) -> asio::awaitable<bool>
         requires (static_cast<bool>(flags & writable))
                  and (buff_size != unbounded_channel_buff)
-        [[nodiscard]] auto try_write(U&& value) -> asio::awaitable<bool>
         // clang-format on
         {
             auto const result = co_await select(
-                ops::write(std::forward<U>(value), derived()),
+                ops::write(std::move(value), derived()),
                 ops::nothing);
 
             co_return result.has_value();
@@ -57,20 +56,17 @@ namespace asiochan::detail
         requires (static_cast<bool>(flags & readable))
         // clang-format on
         {
-            auto result = co_await select(
-                ops::read(derived()));
+            auto result = co_await select(ops::read(derived()));
 
-            co_return std::move(result).template get<T>();
+            co_return std::move(result).template get_received<T>();
         }
 
         // clang-format off
-        template <std::convertible_to<T> U>
+        [[nodiscard]] auto write(T value) -> asio::awaitable<void>
         requires (static_cast<bool>(flags & writable))
-        [[nodiscard]] auto write(U&& value) -> asio::awaitable<void>
         // clang-format on
         {
-            co_await select(
-                ops::write(std::forward<U>(value), derived()));
+            co_await select(ops::write(std::move(value), derived()));
         }
 
       private:

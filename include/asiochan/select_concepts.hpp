@@ -11,15 +11,15 @@
 
 namespace asiochan
 {
-    enum class select_op_submit_result
+    enum class select_waitful_submit_result
     {
-        not_ready,
-        ready,
+        waiting,
+        completed_waitfree,
     };
 
     // clang-format off
     template <typename T>
-    concept select_op = requires (T& op)
+    concept select_op = requires (T& op, std::size_t const& successful_alternative)
     {
         typename T::result_type;
         typename std::integral_constant<std::size_t, T::num_alternatives>;
@@ -28,7 +28,8 @@ namespace asiochan
         { op.submit_if_ready() }
             -> std::same_as<asio::awaitable<std::optional<std::size_t>>>;
 
-        { op.get_result() } -> std::same_as<typename T::result_type>;
+        { op.get_result(successful_alternative) }
+            -> std::same_as<typename T::result_type>;
     };
 
     template <typename T>
@@ -50,7 +51,7 @@ namespace asiochan
               requires requires (typename T::wait_state_type& wait_state)
               {
                   { op.submit_with_wait(select_ctx, base_token, wait_state) }
-                      -> std::same_as<asio::awaitable<select_op_submit_result>>;
+                      -> std::same_as<asio::awaitable<select_waitful_submit_result>>;
 
                   { op.clear_wait(successful_alternative, wait_state) }
                       -> std::same_as<asio::awaitable<void>>;
@@ -59,11 +60,13 @@ namespace asiochan
 
     template <typename... Ops>
     concept waitfree_selection
-    = (sizeof...(Ops) >= 1u)
-      and ((static_cast<std::size_t>(waitable_select_op<Ops>) + ...) == sizeof...(Ops) - 1u)
-      and waitfree_select_op<detail::last_t<Ops...>>;
+        = (sizeof...(Ops) >= 1u)
+          and ((static_cast<std::size_t>(waitable_select_op<Ops>) + ...) == sizeof...(Ops) - 1u)
+          and waitfree_select_op<detail::last_t<Ops...>>;
 
     template <typename... Ops>
-    concept waitable_selection = (sizeof...(Ops) >= 1u) and (waitable_select_op<Ops> and ...);
+    concept waitable_selection
+        = (sizeof...(Ops) >= 1u)
+          and (waitable_select_op<Ops> and ...);
     // clang-format on
 }  // namespace asiochan

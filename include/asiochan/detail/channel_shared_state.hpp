@@ -39,7 +39,7 @@ namespace asiochan::detail
 
     template <sendable T, channel_buff_size buff_size_, asio::execution::executor Executor>
     class channel_shared_state
-      : private channel_shared_state_writer_list_base<T, buff_size_ != unbounded_channel_buff>
+      : public channel_shared_state_writer_list_base<T, buff_size_ != unbounded_channel_buff>
     {
       public:
         using strand_type = asio::strand<Executor>;
