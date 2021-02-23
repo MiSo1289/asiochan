@@ -60,6 +60,7 @@ TEST_CASE("Channels")
     {
         static constexpr auto buffer_size = 3;
 
+        auto channel = asiochan::channel<int, buffer_size>{thread_pool};
         auto read_channel = asiochan::read_channel<int, buffer_size>{thread_pool};
         auto write_channel = asiochan::write_channel<int, buffer_size>{read_channel};
 

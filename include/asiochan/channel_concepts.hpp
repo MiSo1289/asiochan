@@ -1,5 +1,7 @@
 #pragma once
 
+#include <concepts>
+
 #include "asiochan/detail/channel_shared_state.hpp"
 
 namespace asiochan

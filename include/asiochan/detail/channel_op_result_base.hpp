@@ -12,7 +12,7 @@ namespace asiochan::detail
         explicit channel_op_result_base(channel_type<T> auto& channel)
           : shared_state_{&channel.shared_state()} { }
 
-        [[nodiscard]] static auto matches(channel_type_any auto const&) noexcept -> bool
+        [[nodiscard]] static auto matches(any_channel_type auto const&) noexcept -> bool
         {
             return false;
         }

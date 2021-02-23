@@ -1,5 +1,9 @@
 #pragma once
 
+#include <cassert>
+#include <optional>
+#include <utility>
+
 #include "asiochan/sendable.hpp"
 
 namespace asiochan::detail

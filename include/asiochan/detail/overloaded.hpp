@@ -2,12 +2,12 @@
 
 namespace asiochan::detail
 {
-    template <class... Ts>
+    template <typename... Ts>
     struct overloaded : Ts...
     {
         using Ts::operator()...;
     };
 
-    template <class... Ts>
+    template <typename... Ts>
     overloaded(Ts...) -> overloaded<Ts...>;
 }  // namespace asiochan::detail

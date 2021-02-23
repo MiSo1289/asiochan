@@ -1,11 +1,22 @@
 #pragma once
 
+#include <compare>
+#include <cstddef>
+#include <optional>
+
+#include "asiochan/asio.hpp"
+#include "asiochan/channel_concepts.hpp"
+
 namespace asiochan
 {
     class no_result_t
     {
       public:
-        [[nodiscard]] static auto matches(channel_type_any auto const&) noexcept -> bool
+        [[nodiscard]] friend auto operator<=>(
+            no_result_t const& lhs,
+            no_result_t const& rhs) noexcept = default;
+
+        [[nodiscard]] static auto matches(any_channel_type auto const&) noexcept -> bool
         {
             return false;
         }
@@ -23,9 +34,9 @@ namespace asiochan
             static constexpr auto num_alternatives = std::size_t{1};
             static constexpr auto always_waitfree = true;
 
-            static auto submit_if_ready() -> asio::awaitable<select_op_submit_result>
+            static auto submit_if_ready() -> asio::awaitable<std::optional<std::size_t>>
             {
-                co_return select_op_submit_result::ready;
+                co_return 0;
             }
 
             static auto get_result() noexcept -> no_result_t

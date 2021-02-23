@@ -14,6 +14,6 @@ namespace asiochan::detail
     {
     };
 
-    template <typename T, typename... Ts>
-    using last_t = typename last<T, Ts...>::type;
+    template <typename... Ts>
+    using last_t = typename last<Ts...>::type;
 }  // namespace asiochan::detail

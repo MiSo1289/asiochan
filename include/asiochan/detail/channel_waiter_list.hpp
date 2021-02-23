@@ -1,10 +1,12 @@
 #pragma once
 
+#include <concepts>
 #include <cstddef>
 #include <mutex>
 
 #include "asiochan/async_promise.hpp"
 #include "asiochan/detail/send_slot.hpp"
+#include "asiochan/sendable.hpp"
 
 namespace asiochan::detail
 {
@@ -31,7 +33,7 @@ namespace asiochan::detail
     template <sendable T>
     struct channel_waiter_list_node
     {
-        select_wait_context* select_wait_context = nullptr;
+        select_wait_context* ctx = nullptr;
         send_slot<T>* slot = nullptr;
         select_waiter_token token = 0;
         channel_waiter_list_node* prev = nullptr;
@@ -108,7 +110,7 @@ namespace asiochan::detail
                 auto const lock = std::scoped_lock{node->select_wait_context.mutex, contexts.mutex...};
                 if (node->select_wait_context->avail_flag)
                 {
-                    if (not (contexts.avail_flag and ...))
+                    if (not(contexts.avail_flag and ...))
                     {
                         return nullptr;
                     }
@@ -127,5 +129,4 @@ namespace asiochan::detail
         node_type* first_ = nullptr;
         node_type* last_ = nullptr;
     };
-
 }  // namespace asiochan::detail

@@ -1,20 +1,30 @@
 #pragma once
 
+#include <array>
 #include <concepts>
+#include <cstddef>
+#include <optional>
+#include <type_traits>
 #include <utility>
 
+#include "asiochan/asio.hpp"
 #include "asiochan/channel_concepts.hpp"
 #include "asiochan/detail/channel_op_result_base.hpp"
-#include "asiochan/detail/type_traits.hpp"
+#include "asiochan/detail/channel_waiter_list.hpp"
+#include "asiochan/detail/send_slot.hpp"
+#include "asiochan/select_concepts.hpp"
 #include "asiochan/sendable.hpp"
 
 namespace asiochan
 {
     template <sendable T>
-    class write_result : public channel_op_result_base<T>
+    class write_result : public detail::channel_op_result_base<T>
     {
+      private:
+        using base = write_result::channel_op_result_base;
+
       public:
-        using channel_op_result_base::channel_op_result_base;
+        using base::base;
     };
 
     namespace ops
@@ -25,7 +35,7 @@ namespace asiochan
           private:
             static constexpr auto num_always_waitfree
                 = static_cast<std::size_t>(ChannelsHead::shared_state_type::write_never_waits)
-                  + static_cast<std::size_t>(ChannelsHead::shared_state_type::write_never_waits + ...);
+                  + (static_cast<std::size_t>(ChannelsTail::shared_state_type::write_never_waits) + ...);
             static constexpr auto last_always_waitfree
                 = detail::last_t<ChannelsHead, ChannelsTail...>::write_never_waits;
 
@@ -38,13 +48,13 @@ namespace asiochan
             using slot_type = detail::send_slot<T>;
             using waiter_node_type = detail::channel_waiter_list_node<T>;
 
-            struct wait_state_type
-            {
-                std::array<std::optional<channel_waiter_list_node<T>>, num_alternatives> waiter_nodes = {};
-            };
-
             static constexpr auto num_alternatives = sizeof...(ChannelsTail) + 1u;
             static constexpr auto always_waitfree = last_always_waitfree;
+
+            struct wait_state_type
+            {
+                std::array<std::optional<detail::channel_waiter_list_node<T>>, num_alternatives> waiter_nodes = {};
+            };
 
             // clang-format off
             template <std::convertible_to<T> U>
@@ -72,43 +82,43 @@ namespace asiochan
                 return std::get<0>(channels_).shared_state().strand();
             }
 
-            [[nodiscard]] auto submit_if_ready() -> asio::awaitable<select_op_submit_result>
+            [[nodiscard]] auto submit_if_ready() -> asio::awaitable<std::optional<std::size_t>>
             {
-                co_return co_await([&]<std::size_t... indices>(std::index_sequence<indices...>)->asio::awaitable<select_op_submit_result> {
-                    auto const is_ready
-                        = ((co_await [&]<typename ChannelState>(ChannelState& channel_state) -> asio::awaitable<bool> {
-                               constexpr auto channel_index = indices;
+                auto result = std::optional<std::size_t>{};
 
-                               co_await asio::dispatch(channel_state.strand(), asio::use_awaitable);
+                co_await([&]<std::size_t... indices>(std::index_sequence<indices...>)->asio::awaitable<void> {
+                    ((co_await [&]<typename ChannelState>(ChannelState& channel_state) -> asio::awaitable<bool> {
+                         constexpr auto channel_index = indices;
 
-                               if (auto const reader = channel_state.reader_list().dequeue_first_available())
-                               {
-                                   // Buffer was empty with readers waiting.
-                                   // Wake the oldest reader and give him a value from the buffer.
-                                   buffer_.enqueue(*writer->slot);
-                                   detail::notify_waiter(*writer);
+                         co_await asio::dispatch(channel_state.strand(), asio::use_awaitable);
 
-                                   co_return true;
-                               }
-                               else if constexpr (ChannelState::buff_size != 0)
-                               {
-                                   if (not buffer_.full())
-                                   {
-                                       // Store the value in the buffer.
-                                       buffer_.enqueue(slot_);
+                         if (auto const reader = channel_state.reader_list().dequeue_first_available())
+                         {
+                             // Buffer was empty with readers waiting.
+                             // Wake the oldest reader and give him a value.
+                             transfer(slot_, *reader->slot);
+                             detail::notify_waiter(*reader);
 
-                                       co_return true;
-                                   }
-                               }
+                             co_return true;
+                         }
+                         else if constexpr (ChannelState::buff_size != 0)
+                         {
+                             if (not channel_state.buffer().full())
+                             {
+                                 // Store the value in the buffer.
+                                 channel_state.buffer().enqueue(slot_);
+                                 result = channel_index;
 
-                               co_return false;
-                           }(std::get<indices>(channels).shared_state()))
-                           or ...);
+                                 co_return true;
+                             }
+                         }
 
-                    co_return is_ready
-                        ? select_op_submit_result::completed
-                        : select_op_submit_result::waiting;
+                         co_return false;
+                     }(std::get<indices>(channels_).shared_state()))
+                     or ...);
                 }(std::index_sequence_for<ChannelsHead, ChannelsTail...>{}));
+
+                co_return result;
             }
 
             // clang-format off
@@ -117,7 +127,7 @@ namespace asiochan
                 detail::select_waiter_token const base_token,
                 wait_state_type& wait_state)
                 -> asio::awaitable<select_op_submit_result>
-            requires not always_waitfree
+            requires (not always_waitfree)
             // clang-format on
             {
                 co_return co_await([&]<std::size_t... indices>(std::index_sequence<indices...>)->asio::awaitable<select_op_submit_result> {
@@ -131,21 +141,21 @@ namespace asiochan
                                if (auto const reader = channel_state.reader_list().dequeue_first_available(select_ctx))
                                {
                                    // Buffer was empty with readers waiting.
-                                   // Wake the oldest reader and give him a value from the buffer.
-                                   buffer_.enqueue(*writer->slot);
-                                   detail::notify_waiter(*writer);
+                                   // Wake the oldest reader and give him a value.
+                                   transfer(slot_, *reader->slot);
+                                   detail::notify_waiter(*reader);
                                    select_ctx.promise.set_value(token);
 
                                    co_return true;
                                }
                                else if constexpr (ChannelState::buff_size != 0)
                                {
-                                   if (not buffer_.full())
+                                   if (not channel_state.buffer().full())
                                    {
                                        if (claim(select_ctx))
                                        {
                                            // Store the value in the buffer.
-                                           buffer_.enqueue(slot_);
+                                           channel_state.buffer().enqueue(slot_);
                                            select_ctx.promise.set_value(token);
                                        }
 
@@ -163,12 +173,12 @@ namespace asiochan
                                channel_state.writer_list().enqueue(waiter_node);
 
                                co_return false;
-                           }(std::get<indices>(channels).shared_state()))
+                           }(std::get<indices>(channels_).shared_state()))
                            or ...);
 
                     co_return is_ready
-                        ? select_op_submit_result::completed
-                        : select_op_submit_result::waiting;
+                        ? select_op_submit_result::ready
+                        : select_op_submit_result::not_ready;
                 }(std::index_sequence_for<ChannelsHead, ChannelsTail...>{}));
             }
 
@@ -177,11 +187,11 @@ namespace asiochan
                 std::optional<std::size_t> const successful_alternative,
                 wait_state_type& wait_state)
                 -> asio::awaitable<void>
-            requires not always_waitfree
+            requires (not always_waitfree)
             // clang-format on
             {
                 co_await([&]<std::size_t... indices>(std::index_sequence<indices...>)->asio::awaitable<void> {
-                    (co_await([&](detail::channel_shared_state_type auto& channel_state) -> asio::awaitable<void> {
+                    (co_await([&](auto& channel_state) -> asio::awaitable<void> {
                          constexpr auto channel_index = indices;
 
                          auto& waiter_node = wait_state.waiter_nodes[channel_index];
@@ -203,7 +213,7 @@ namespace asiochan
             {
                 auto result = std::optional<result_type>{};
 
-                ([&](std::index_sequence<indices...>) {
+                ([&]<std::size_t... indices>(std::index_sequence<indices...>) {
                     ([&](auto& channel) {
                         constexpr auto channel_index = indices;
 
@@ -216,7 +226,7 @@ namespace asiochan
                         return false;
                     }(std::get<indices>(channels_))
                      or ...);
-                }(std::index_sequence_for<ChannelsHead, ChannelsTail>{}));
+                }(std::index_sequence_for<ChannelsHead, ChannelsTail...>{}));
 
                 assert(result.has_value());
 

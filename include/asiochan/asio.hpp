@@ -7,9 +7,11 @@
 #include <asio/any_io_executor.hpp>
 #include <asio/async_result.hpp>
 #include <asio/awaitable.hpp>
+#include <asio/co_spawn.hpp>
+#include <asio/detached.hpp>
+#include <asio/dispatch.hpp>
 #include <asio/execution/executor.hpp>
 #include <asio/execution_context.hpp>
-#include <asio/dispatch.hpp>
 #include <asio/post.hpp>
 #include <asio/strand.hpp>
 #include <asio/this_coro.hpp>
@@ -20,9 +22,11 @@
 #include <boost/asio/any_io_executor.hpp>
 #include <boost/asio/async_result.hpp>
 #include <boost/asio/awaitable.hpp>
+#include <boost/asio/co_spawn.hpp>
+#include <boost/asio/detached.hpp>
+#include <boost/asio/dispatch.hpp>
 #include <boost/asio/execution/executor.hpp>
 #include <boost/asio/execution_context.hpp>
-#include <boost/asio/dispatch.hpp>
 #include <boost/asio/post.hpp>
 #include <boost/asio/strand.hpp>
 #include <boost/asio/this_coro.hpp>
