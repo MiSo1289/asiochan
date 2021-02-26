@@ -27,7 +27,7 @@ namespace asio = asiochan::asio;
 
 TEST_CASE("Channels")
 {
-    auto const num_threads = GENERATE(range(1u, 4u));
+    auto const num_threads = GENERATE(range(1u, 2u));
     auto thread_pool = asio::thread_pool{num_threads};
 
     SECTION("Ping-pong")
@@ -60,8 +60,9 @@ TEST_CASE("Channels")
     {
         static constexpr auto buffer_size = 3;
 
-        auto read_channel = asiochan::read_channel<int, buffer_size>{thread_pool};
-        auto write_channel = asiochan::write_channel<int, buffer_size>{read_channel};
+        auto channel = asiochan::channel<int, buffer_size>{thread_pool};
+        auto read_channel = asiochan::read_channel<int, buffer_size>{channel};
+        auto write_channel = asiochan::write_channel<int, buffer_size>{channel};
 
         auto source_task = asio::co_spawn(
             thread_pool,
@@ -84,7 +85,8 @@ TEST_CASE("Channels")
                 for (auto const i : std::views::iota(0, buffer_size))
                 {
                     auto const recv = co_await read_channel.try_read();
-                    CHECK(recv == i);
+                    REQUIRE(recv.has_value());
+                    CHECK(*recv == i);
                 }
                 auto const last_recv = co_await read_channel.try_read();
                 CHECK(not last_recv.has_value());
@@ -98,8 +100,9 @@ TEST_CASE("Channels")
     {
         static constexpr auto buffer_size = 3;
 
-        auto read_channel = asiochan::read_channel<void, buffer_size>{thread_pool};
-        auto write_channel = asiochan::write_channel<void, buffer_size>{read_channel};
+        auto channel = asiochan::channel<void, buffer_size>{thread_pool};
+        auto read_channel = asiochan::read_channel<void, buffer_size>{channel};
+        auto write_channel = asiochan::write_channel<void, buffer_size>{channel};
 
         auto source_task = asio::co_spawn(
             thread_pool,
@@ -136,8 +139,9 @@ TEST_CASE("Channels")
     {
         static constexpr auto num_tokens = 10;
 
-        auto read_channel = asiochan::unbounded_read_channel<int>{thread_pool};
-        auto write_channel = asiochan::unbounded_write_channel<int>{read_channel};
+        auto channel = asiochan::unbounded_channel<int>{thread_pool};
+        auto read_channel = asiochan::unbounded_read_channel<int>{channel};
+        auto write_channel = asiochan::unbounded_write_channel<int>{channel};
 
         auto source_task = asio::co_spawn(
             thread_pool,
@@ -172,8 +176,9 @@ TEST_CASE("Channels")
         static constexpr auto num_tokens_per_task = 5;
         static constexpr auto num_tasks = 3;
 
-        auto read_channel = asiochan::read_channel<int>{thread_pool};
-        auto write_channel = asiochan::write_channel<int>{read_channel};
+        auto channel = asiochan::channel<int>{thread_pool};
+        auto read_channel = asiochan::read_channel<int>{channel};
+        auto write_channel = asiochan::write_channel<int>{channel};
 
         auto source_values = std::vector<int>(num_tasks * num_tokens_per_task);
         std::iota(source_values.begin(), source_values.end(), 0);

@@ -81,9 +81,10 @@ auto main() -> int
 
 - Thread safety - all channel types are thread-safe, relying on ASIO strands.
 - Value semantics - channels are intended to be passed by value. Internally, a channel holds a `shared_ptr` to a shared state type, similar to `future` and `promise`. 
-- Bidirectional - channels are bidirectional by default, but can be restricted to write or read only (similar to channels in golang). Write, read, and bidirectional channels are convertible between each other, as the shared state type does not change.
+- Bidirectional - channels are bidirectional by default, but can be restricted to write or read only (similar to channels in golang).
 - Synchronization - by default, a writer will wait until someone reads the value. Readers and writers are queued in FIFO order. Similar to golang channels, it is possible to specify a buffer size; writing is wait-free as long as there is space in the buffer. A dynamically sized buffer that is always wait-free for the writer is also available.
 - Channels of `void` - channels that do not send any values and are used only for synchronization are also possible. When buffered, the buffer is implemented as a simple counter (and does not allocate even when dynamically sized).
+- It is possible to simultaneously await multiple alternative read / write channel operations, similar to go's `select` statement, see [select](#select). This allows e.g. for easy implementation of cancellation / timeouts.
 
 ### Interface
 
@@ -111,18 +112,18 @@ template <sendable T, channel_buff_size buff_size, asio::execution::executor Exe
 class basic_write_channel;
 ```
 
-Bidirectional, read and write channel types are interconvertible as long as the value type, buffer size, and executor match. `buff_size` (`size_t`) specifies the size of the internal buffer. When 0, the writer will always wait for a read. A special value `unbounded_channel_buff` can be used, in which case the buffer is dynamic and writers never wait.
+Bidirectional channels can be converted to matching read and write channel types as long as the value type, buffer size, and executor match. Read and write channels are not interconvertible, to preserve type-safety. `buff_size` (`size_t`) specifies the size of the internal buffer. When 0, the writer will always wait for a read. A special value `unbounded_channel_buff` can be used, in which case the buffer is dynamic and writers never wait.
 
 #### Convenience typedefs
 ```c++
-template <sendable T, channel_buff_size buff_size = 0>
-using channel = basic_channel<T, buff_size, asio::any_io_executor>;
+template <sendable T, channel_buff_size buff_size_ = 0>
+using channel = basic_channel<T, buff_size_, asio::any_io_executor>;
 
-template <sendable T, channel_buff_size buff_size = 0>
-using read_channel = basic_read_channel<T, buff_size, asio::any_io_executor>;
+template <sendable T, channel_buff_size buff_size_ = 0>
+using read_channel = basic_read_channel<T, buff_size_, asio::any_io_executor>;
 
-template <sendable T, channel_buff_size buff_size = 0>
-using write_channel = basic_write_channel<T, buff_size, asio::any_io_executor>;
+template <sendable T, channel_buff_size buff_size_ = 0>
+using write_channel = basic_write_channel<T, buff_size_, asio::any_io_executor>;
 
 template <sendable T>
 using unbounded_channel = channel<T, unbounded_channel_buff>;
@@ -136,47 +137,187 @@ using unbounded_write_channel = write_channel<T, unbounded_channel_buff>;
 
 #### Constructor
 ```c++
-auto ioc = asio::io_context{};
-auto chan1 = channel<void>{ioc};  // Execution context constructor
-auto chan2 = channel<void>{ioc.get_executor()};  // Executor constructor
+asio::io_context ioc{};
+channel<void> chan1{ioc};  // Execution context constructor
+channel<void> chan2{ioc.get_executor()};  // Executor constructor
 auto chan3 = chan1;  // Copy constructor - now shares state with chan1
 auto chan4 = std::move(chan2);  // Move constructor - chan2 is now invalid.
 ```
 
 #### Read
 ```c++
-auto chan = channel<int>{ioc};
-auto maybe_result = std::optional<int>{co_await chan.try_read()};
-auto result = int{co_await chan.read()};
+channel<int> chan{ioc};
+std::optional<int> maybe_result = co_await chan.try_read();
+int result = co_await chan.read();
 
-auto chan_void = channel<void>{ioc};
-auto success = bool{co_await chan_void.try_read()};
+channel<void> chan_void{ioc};
+bool success = co_await chan_void.try_read();
 co_await chan_void.read();
 ```
 
-The `try_read` functions do not perform any waiting (`co_await` must still be used, as a `strand` is used for synchronization). If no value is available, `nullopt` (or `false` for `channel<void>`) is returned.
+The `try_read` method does not perform any waiting. If no value is available, `nullopt` (or `false` for `channel<void>`) is returned.
 
-The `read` functions will wait until a value is ready.
+The `read` method will wait until a value is ready.
 
 #### Write
 ```c++
-auto success = bool{co_await chan.try_write(1)};
+bool success = co_await chan.try_write(1);
 co_await chan.write(1);
 
-auto success = bool{co_await chan_void.try_write()};
+bool success = co_await chan_void.try_write();
 co_await chan_void.write();
 ```
 
-The `try_write` functions do not perform any waiting. If no waiter was ready and the internal buffer was full, `false` is returned.
+The `try_write` method do not perform any waiting. If no waiter was ready and the internal buffer was full, `false` is returned.
 
-The `write` function will wait until a reader is ready.
+The `write` method will wait until a reader is ready.
 
-### Limitations
-This is a 'minimal useful version', with some limitations: 
-- No cancel / close support.
-- No support for concurrent waiting on multiple channels.
+Note that for unbounded buffered channels, the `try_write` method is not available, as writes always succeed without waiting.
 
-This can usually be worked around by sending sum types, like `variant` and `optional`.
+#### Select
+```c++
+#include <asiochan/select.hpp>
+```
+
+The `select` function allows awaiting on multiple alternative channel operations. The first ready operation will cancel all others. Cancellation is fully deterministic. For example, when you await reads on two different channels, only one of these will have a value consumed.
+
+```c++
+channel<void> chan_void_1{ioc};
+channel<void> chan_void_2{ioc};
+channel<int> chan_int_1{ioc};
+channel<int> chan_int_2{ioc};
+
+auto result = co_await select(
+    ops::read(chan_void_1),
+    ops::write(chan_void_2),
+    ops::read(chan_int_1),
+    ops::write(std::rand(), chan_int_2));
+
+bool received_void = result.received<void>();
+bool sent_void = result.sent<void>();
+// Non-owning pointer inside the result object if int was received, nullptr otherwise.
+int* maybe_received_int = result.get_if_received<int>();
+bool sent_int = result.sent<int>();
+
+if (result.received<int>())
+{
+    // The get_received<T> method will throw bad_select_result_access if you get the type wrong.
+    int received_int = result.get_received<int>();
+}
+```
+
+To not wait if no operation is ready, a `nothing` operation can be used. It must appear as the last argument to select.
+
+```c++
+auto result = co_await select(
+    ops::read(chan_int_1),
+    ops::write(std::rand(), chan_int_2),
+    ops::nothing);
+
+// If nothing is an alternative, has_value() method is available...
+bool any_succeeded = result.has_value();
+// .. and the result is contextually convertible to bool.
+if (result)
+{
+}
+```
+
+The `read` and `write` operations can accept multiple channels.
+This allows you to `select` between multiple write channels with the same `send_type` without copying the sent value:
+```c++
+channel<std::string> chan_1{ioc};
+channel<std::string> chan_2{ioc};
+std::string long_string = "...";
+
+auto string_send_result = co_await select(
+    ops::write(std::move(long_string), chan_1, chan_2));
+```
+
+The `select_result` type remembers the shared state of the channel for which an operation succeeded. This allows disambiguation bettween channels of the same `send_type`:
+
+```c++
+bool sent_to_chan_1 = string_send_result.sent_to(chan_1);
+bool sent_to_chan_2 = string_send_result.sent_to(chan_2);
+
+auto string_recv_result = co_await select(
+    ops::read(chan_1, chan_2));
+
+bool recv_from_chan_1 = string_recv_result.received_from(chan_1);
+bool recv_from_chan_2 = string_recv_result.received_from(chan_2);
+// Similar to get_if<T>()
+std::string* result = string_recv_result.get_if_received_from(chan_1);
+```
+
+Note: when writing to an unbounded channel with `select`, the corresponding `write` operation must appear last, similar to the `nothing` operation. If that `write` operation targets multiple channels, the unbounded channel must be last too.
+
+##### Example: timeouts
+
+The select feature can be useful for implementing timeouts on channel operations.
+
+```c++
+using std::chrono::steady_clock;
+using duration = steady_clock::duration;
+using namespace std::literals;
+
+auto set_timeout(
+    asio::steady_timer& timer, 
+    duration dur)
+    -> read_channel<void>
+{
+    timer.expires_after(dur);
+    
+    auto timeout = channel<void>{timer.get_executor()};
+
+    asio::co_spawn(
+        timer.get_executor(),
+        [&timer, timeout]() -> asio::awaitable<void> {
+            auto timer = asio::steady_timer{executor};
+            co_await timer.async_wait(asio::use_awaitable);
+            co_await timeout.write();
+        },
+        asio::detached);
+
+    return timeout;
+}
+
+auto accept_client_requests(
+    write_channel<std::string> requests_channel)
+    -> asio::awaitable<void>
+{
+    while (true)
+    {
+        auto request_from_client = co_await /* ... */;
+        co_await requests_channel.write(std::move(request_from_client));
+    }
+}
+
+auto timeout_example()
+    -> asio::awaitable<void>
+{
+    auto executor = co_await asio::this_coro::executor;
+    auto timer = asio::steady_timer{executor};
+    auto requests = channel<std::string>{executor};
+
+    asio::co_spawn(
+        executor, 
+        accept_client_requests(requests_channel), 
+        asio::detached);
+
+    auto timeout = set_timeout(timer, 10s);
+    auto result = co_await select(
+        ops::read(requests),
+        ops::read(timeout));
+    
+    if (auto* request = result.get_if_received<std::string>())
+    {
+        // Handle request...
+    }
+    else
+    {
+        // Handle timeout...
+    }
+}
+```
 
 ### Installing
 
@@ -192,5 +333,5 @@ By default, Boost.ASIO is used. To use with standalone ASIO:
 If you use Conan to manage dependencies, you can get this library from [my artifactory](https://miso1289.jfrog.io/ui/packages/conan:%2F%2Fasiochan?name=asiochan&type=packages):
 ```console
 $ conan remote add miso1289 https://miso1289.jfrog.io/artifactory/api/conan/miso1289
-$ conan install asiochan/0.1.0@miso1289/stable
+$ conan install asiochan/0.2.0@miso1289/stable
 ```
