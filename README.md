@@ -260,18 +260,18 @@ using duration = steady_clock::duration;
 using namespace std::literals;
 
 auto set_timeout(
-    asio::steady_timer& timer, 
+    asio::execution::executor auto executor,
     duration dur)
     -> read_channel<void>
 {
+    auto timer = asio::steady_timer{executor};
     timer.expires_after(dur);
     
-    auto timeout = channel<void>{timer.get_executor()};
+    auto timeout = channel<void>{executor};
 
     asio::co_spawn(
-        timer.get_executor(),
-        [&timer, timeout]() -> asio::awaitable<void> {
-            auto timer = asio::steady_timer{executor};
+        executor,
+        [=]() -> asio::awaitable<void> {
             co_await timer.async_wait(asio::use_awaitable);
             co_await timeout.write();
         },
@@ -295,7 +295,6 @@ auto timeout_example()
     -> asio::awaitable<void>
 {
     auto executor = co_await asio::this_coro::executor;
-    auto timer = asio::steady_timer{executor};
     auto requests = channel<std::string>{executor};
 
     asio::co_spawn(
@@ -303,7 +302,7 @@ auto timeout_example()
         accept_client_requests(requests_channel), 
         asio::detached);
 
-    auto timeout = set_timeout(timer, 10s);
+    auto timeout = set_timeout(executor, 10s);
     auto result = co_await select(
         ops::read(requests),
         ops::read(timeout));
