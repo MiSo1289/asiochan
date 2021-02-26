@@ -10,15 +10,11 @@
 
 #ifdef ASIOCHAN_USE_STANDALONE_ASIO
 
-#include <asio/co_spawn.hpp>
-#include <asio/detached.hpp>
 #include <asio/thread_pool.hpp>
 #include <asio/use_future.hpp>
 
 #else
 
-#include <boost/asio/co_spawn.hpp>
-#include <boost/asio/detached.hpp>
 #include <boost/asio/thread_pool.hpp>
 #include <boost/asio/use_future.hpp>
 
@@ -83,7 +79,9 @@ auto main() -> int
     std::iota(numbers.begin(), numbers.end(), 1);
 
     auto task = asio::co_spawn(tp, sum_task(numbers, 10), asio::use_future);
-    std::cout << "The result is " << task.get();
+
+    auto result = task.get();
+    std::cout << "The result is " << result;
 
     return EXIT_SUCCESS;
 }

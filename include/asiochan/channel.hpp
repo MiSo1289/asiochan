@@ -27,7 +27,9 @@ namespace asiochan
 
         [[nodiscard]] explicit channel_base(Executor const& executor)
           : shared_state_{std::make_shared<shared_state_type>(executor)}
-          , executor_{executor} { }
+          , executor_{executor}
+        {
+        }
 
         // clang-format off
         template <std::derived_from<asio::execution_context> Ctx>

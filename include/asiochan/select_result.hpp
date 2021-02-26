@@ -255,7 +255,7 @@ namespace asiochan
         {
             return std::visit(
                 detail::overloaded{
-                    [](T const& result) -> T* { return &result; },
+                    [](T& result) -> T* { return &result; },
                     [](auto const&) -> T* { return nullptr; },
                 },
                 result_);

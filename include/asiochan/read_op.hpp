@@ -135,7 +135,14 @@ namespace asiochan
 
                         if (successful_alternative == channel_index)
                         {
-                            result.emplace(slot_.read(), channel);
+                            if constexpr (std::is_void_v<T>)
+                            {
+                                result.emplace(channel);
+                            }
+                            else
+                            {
+                                result.emplace(slot_.read(), channel);
+                            }
                             return true;
                         }
 
@@ -177,6 +184,7 @@ namespace asiochan
                     {
                         // Get a value from the buffer.
                         channel_state.buffer().dequeue(slot_);
+                        result = channel_index;
 
                         if constexpr (not ChannelState::write_never_waits)
                         {

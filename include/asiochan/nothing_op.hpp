@@ -39,7 +39,9 @@ namespace asiochan
                 co_return 0;
             }
 
-            static auto get_result() noexcept -> no_result_t
+            static auto get_result(
+                [[maybe_unused]] std::optional<std::size_t> successful_alternative) noexcept
+                -> no_result_t
             {
                 return no_result;
             }

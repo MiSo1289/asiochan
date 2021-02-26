@@ -68,6 +68,8 @@ namespace asiochan::detail
             return strand_;
         }
 
+        int magic = 123456;
+
       private:
         strand_type strand_;
         reader_list_type reader_list_;
