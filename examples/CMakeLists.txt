@@ -12,17 +12,3 @@ target_sources(
   PRIVATE
   example_sum.cpp
 )
-add_executable(asiochan_playground)
-target_link_libraries(
-  asiochan_playground
-
-  PRIVATE
-  Threads::Threads
-  asiochan::asiochan
-)
-target_sources(
-  asiochan_playground
-
-  PRIVATE
-  playground.cpp
-)

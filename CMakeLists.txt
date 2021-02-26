@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.17)
-set(ASIOCHAN_VERSION 0.1.0)
+set(ASIOCHAN_VERSION 0.2.0)
 project(AsioChan VERSION "${ASIOCHAN_VERSION}")
 
 include(CheckCXXCompilerFlag)
