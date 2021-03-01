@@ -28,8 +28,6 @@ namespace asiochan
         typename std::integral_constant<std::size_t, T::num_alternatives>;
         typename std::bool_constant<T::always_waitfree>;
 
-        { const_op.get_executor() } -> std::same_as<typename T::executor_type>;
-
         { op.submit_if_ready() }
             -> std::same_as<std::optional<std::size_t>>;
 

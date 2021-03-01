@@ -28,8 +28,6 @@ namespace asiochan
                      typename T::send_type,
                      typename T::executor_type>;
 
-        { const_channel.get_executor() } -> std::same_as<typename T::executor_type>;
-
         { channel.shared_state() } noexcept -> std::same_as<typename T::shared_state_type&>;
     };
 

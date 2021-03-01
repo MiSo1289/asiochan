@@ -137,20 +137,18 @@ using unbounded_write_channel = write_channel<T, unbounded_channel_buff>;
 
 #### Constructor
 ```c++
-asio::io_context ioc{};
-channel<void> chan1{ioc};  // Execution context constructor
-channel<void> chan2{ioc.get_executor()};  // Executor constructor
-auto chan3 = chan1;  // Copy constructor - now shares state with chan1
-auto chan4 = std::move(chan2);  // Move constructor - chan2 is now invalid.
+channel<void> chan1{};  // Default constructor - creates a new shared state
+auto chan2 = chan1;  // Copy constructor - now shares state with chan1
+auto chan3 = std::move(chan);  // Move constructor - chan1 is now invalid.
 ```
 
 #### Read
 ```c++
-channel<int> chan{ioc};
+channel<int> chan{};
 std::optional<int> maybe_result = chan.try_read();
 int result = co_await chan.read();
 
-channel<void> chan_void{ioc};
+channel<void> chan_void{};
 bool success = chan_void.try_read();
 co_await chan_void.read();
 ```
@@ -182,10 +180,10 @@ Note that for unbounded buffered channels, writing always succeeds and is withou
 The `select` function allows awaiting on multiple alternative channel operations. The first ready operation will cancel all others. Cancellation is fully deterministic. For example, when you await reads on two different channels, only one of these will have a value consumed.
 
 ```c++
-channel<void> chan_void_1{ioc};
-channel<void> chan_void_2{ioc};
-channel<int> chan_int_1{ioc};
-channel<int> chan_int_2{ioc};
+channel<void> chan_void_1{};
+channel<void> chan_void_2{};
+channel<int> chan_int_1{};
+channel<int> chan_int_2{};
 
 auto result = co_await select(
     ops::read(chan_void_1),
@@ -228,8 +226,8 @@ Writing to an unbounded channel is also a wait-free operation, and can be thus b
 The `read` and `write` operations can accept multiple channels.
 This allows you to `select` between multiple write channels with the same `send_type` without copying the sent value:
 ```c++
-channel<std::string> chan_1{ioc};
-channel<std::string> chan_2{ioc};
+channel<std::string> chan_1{};
+channel<std::string> chan_2{};
 std::string long_string = "...";
 
 auto string_send_result = co_await select(
@@ -268,7 +266,7 @@ auto set_timeout(
     auto timer = asio::steady_timer{executor};
     timer.expires_after(dur);
     
-    auto timeout = channel<void>{executor};
+    auto timeout = channel<void>{};
 
     asio::co_spawn(
         executor,
@@ -296,7 +294,7 @@ auto timeout_example()
     -> asio::awaitable<void>
 {
     auto executor = co_await asio::this_coro::executor;
-    auto requests = channel<std::string>{executor};
+    auto requests = channel<std::string>{};
 
     asio::co_spawn(
         executor, 

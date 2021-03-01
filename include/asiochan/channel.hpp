@@ -25,26 +25,10 @@ namespace asiochan
 
         static constexpr auto flags = flags_;
 
-        // clang-format off
-        template <typename ExecutorArg>
-        requires asio::execution::executor<std::decay_t<ExecutorArg>>
-                 and std::constructible_from<Executor, ExecutorArg&&>
-        [[nodiscard]] explicit channel_base(ExecutorArg&& executor)
+        [[nodiscard]] channel_base()
           : shared_state_{std::make_shared<shared_state_type>()}
-          , executor_{std::forward<ExecutorArg>(executor)}
-        // clang-format on
         {
         }
-
-        // clang-format off
-        template <std::derived_from<asio::execution_context> Ctx>
-        requires requires (Ctx& ctx) {
-            { ctx.get_executor() } -> asio::execution::executor;
-            { ctx.get_executor() } -> std::convertible_to<Executor>;
-        }
-        // clang-format on
-        [[nodiscard]] explicit channel_base(Ctx& ctx)
-          : channel_base{ctx.get_executor()} { }
 
         // clang-format off
         template <channel_flags other_flags>
@@ -52,7 +36,6 @@ namespace asiochan
         [[nodiscard]] channel_base(
             channel_base<T, buff_size, other_flags, Executor> const& other)
           : shared_state_{other.shared_state_}
-          , executor_{other.executor_}
         // clang-format on
         {
         }
@@ -63,14 +46,8 @@ namespace asiochan
         [[nodiscard]] channel_base(
             channel_base<T, buff_size, other_flags, Executor>&& other)
           : shared_state_{std::move(other.shared_state_)}
-          , executor_{std::move(other.executor_)}
         // clang-format on
         {
-        }
-
-        [[nodiscard]] auto get_executor() const -> executor_type
-        {
-            return executor_;
         }
 
         [[nodiscard]] auto shared_state() noexcept -> shared_state_type&
@@ -91,7 +68,6 @@ namespace asiochan
         friend class channel_base;
 
         std::shared_ptr<shared_state_type> shared_state_;
-        Executor executor_;
     };
 
     template <sendable T, channel_buff_size buff_size, asio::execution::executor Executor>

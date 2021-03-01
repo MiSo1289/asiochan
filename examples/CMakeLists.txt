@@ -5,10 +5,7 @@ target_link_libraries(
   PRIVATE
   Threads::Threads
   asiochan::asiochan
-#  -fsanitize=address
 )
-#target_compile_options(asiochan_example_sum PRIVATE
-#  -fsanitize=address)
 target_sources(
   asiochan_example_sum
 

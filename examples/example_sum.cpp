@@ -43,8 +43,8 @@ auto sum_task(std::span<int const> array, int num_tasks)
     auto executor = co_await asio::this_coro::executor;
 
     // Spawn N child routines, sharing the same in/out channels
-    auto in = asiochan::channel<std::optional<int>>{executor};
-    auto out = asiochan::channel<int>{executor};
+    auto in = asiochan::channel<std::optional<int>>{};
+    auto out = asiochan::channel<int>{};
     for (auto i : std::views::iota(0, num_tasks))
     {
         asio::co_spawn(executor, sum_subtask(in, out), asio::detached);

@@ -77,11 +77,6 @@ namespace asiochan
             {
             }
 
-            [[nodiscard]] auto get_executor() const -> executor_type
-            {
-                return std::get<0>(channels_).get_executor();
-            }
-
             [[nodiscard]] auto submit_if_ready() -> std::optional<std::size_t>
             {
                 auto ready_alternative = std::optional<std::size_t>{};

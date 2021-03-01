@@ -32,7 +32,7 @@ TEST_CASE("Channels")
 
     SECTION("Ping-pong")
     {
-        auto channel = asiochan::channel<std::string>{thread_pool};
+        auto channel = asiochan::channel<std::string>{};
 
         auto ping_task = asio::co_spawn(
             thread_pool,
@@ -60,7 +60,7 @@ TEST_CASE("Channels")
     {
         static constexpr auto buffer_size = 3;
 
-        auto channel = asiochan::channel<int, buffer_size>{thread_pool};
+        auto channel = asiochan::channel<int, buffer_size>{};
         auto read_channel = asiochan::read_channel<int, buffer_size>{channel};
         auto write_channel = asiochan::write_channel<int, buffer_size>{channel};
 
@@ -86,7 +86,7 @@ TEST_CASE("Channels")
     {
         static constexpr auto buffer_size = 3;
 
-        auto channel = asiochan::channel<void, buffer_size>{thread_pool};
+        auto channel = asiochan::channel<void, buffer_size>{};
         auto read_channel = asiochan::read_channel<void, buffer_size>{channel};
         auto write_channel = asiochan::write_channel<void, buffer_size>{channel};
 
@@ -111,7 +111,7 @@ TEST_CASE("Channels")
     {
         static constexpr auto num_tokens = 10;
 
-        auto channel = asiochan::unbounded_channel<int>{thread_pool};
+        auto channel = asiochan::unbounded_channel<int>{};
         auto read_channel = asiochan::unbounded_read_channel<int>{channel};
         auto write_channel = asiochan::unbounded_write_channel<int>{channel};
 
@@ -134,7 +134,7 @@ TEST_CASE("Channels")
         static constexpr auto num_tokens_per_task = 5;
         static constexpr auto num_tasks = 3;
 
-        auto channel = asiochan::channel<int>{thread_pool};
+        auto channel = asiochan::channel<int>{};
         auto read_channel = asiochan::read_channel<int>{channel};
         auto write_channel = asiochan::write_channel<int>{channel};
 
