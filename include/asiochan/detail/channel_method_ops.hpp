@@ -15,6 +15,7 @@
 namespace asiochan::detail
 {
     template <sendable T,
+              asio::execution::executor Executor,
               channel_buff_size buff_size,
               channel_flags flags,
               typename Derived>
@@ -22,37 +23,37 @@ namespace asiochan::detail
     {
       public:
         // clang-format off
-        [[nodiscard]] auto try_read() -> asio::awaitable<std::optional<T>>
+        [[nodiscard]] auto try_read() -> std::optional<T>
         requires (static_cast<bool>(flags & readable))
         // clang-format on
         {
-            auto result = co_await select(
+            auto result = select_ready(
                 ops::read(derived()),
                 ops::nothing);
 
             if (auto const ptr = result.template get_if_received<T>())
             {
-                co_return std::move(*ptr);
+                return std::move(*ptr);
             }
 
-            co_return std::nullopt;
+            return std::nullopt;
         }
 
         // clang-format off
-        [[nodiscard]] auto try_write(T value) -> asio::awaitable<bool>
+        [[nodiscard]] auto try_write(T value) -> bool
         requires (static_cast<bool>(flags & writable))
                  and (buff_size != unbounded_channel_buff)
         // clang-format on
         {
-            auto const result = co_await select(
+            auto const result = select_ready(
                 ops::write(std::move(value), derived()),
                 ops::nothing);
 
-            co_return result.has_value();
+            return result.has_value();
         }
 
         // clang-format off
-        [[nodiscard]] auto read() -> asio::awaitable<T>
+        [[nodiscard]] auto read() -> asio::awaitable<T, Executor>
         requires (static_cast<bool>(flags & readable))
         // clang-format on
         {
@@ -62,11 +63,21 @@ namespace asiochan::detail
         }
 
         // clang-format off
-        [[nodiscard]] auto write(T value) -> asio::awaitable<void>
+        [[nodiscard]] auto write(T value) -> asio::awaitable<void, Executor>
         requires (static_cast<bool>(flags & writable))
+                 and (buff_size != unbounded_channel_buff)
         // clang-format on
         {
             co_await select(ops::write(std::move(value), derived()));
+        }
+
+        // clang-format off
+        void write(T value)
+        requires (static_cast<bool>(flags & writable))
+                 and (buff_size == unbounded_channel_buff)
+        // clang-format on
+        {
+            select_ready(ops::write(std::move(value), derived()));
         }
 
       private:
@@ -77,34 +88,35 @@ namespace asiochan::detail
     };
 
     template <channel_buff_size buff_size,
+              asio::execution::executor Executor,
               channel_flags flags,
               typename Derived>
-    class channel_method_ops<void, buff_size, flags, Derived>
+    class channel_method_ops<void, Executor, buff_size, flags, Derived>
     {
       public:
         // clang-format off
-        [[nodiscard]] auto try_read() -> asio::awaitable<bool>
+        [[nodiscard]] auto try_read() -> bool
         requires (static_cast<bool>(flags & readable))
         // clang-format on
         {
-            auto const result = co_await select(
+            auto const result = select_ready(
                 ops::read(derived()),
                 ops::nothing);
 
-            co_return result.has_value();
+            return result.has_value();
         }
 
         // clang-format off
-        [[nodiscard]] auto try_write() -> asio::awaitable<bool>
+        [[nodiscard]] auto try_write() -> bool
         requires (static_cast<bool>(flags & writable))
                  and (buff_size != unbounded_channel_buff)
         // clang-format on
         {
-            auto const result = co_await select(
+            auto const result = select_ready(
                 ops::write(derived()),
                 ops::nothing);
 
-            co_return result.has_value();
+            return result.has_value();
         }
 
         // clang-format off
@@ -118,9 +130,19 @@ namespace asiochan::detail
         // clang-format off
         [[nodiscard]] auto write() -> asio::awaitable<void>
         requires (static_cast<bool>(flags & writable))
+                 and (buff_size != unbounded_channel_buff)
         // clang-format on
         {
             co_await select(ops::write(derived()));
+        }
+
+        // clang-format off
+        void write()
+        requires (static_cast<bool>(flags & writable))
+                 and (buff_size == unbounded_channel_buff)
+        // clang-format on
+        {
+            select_ready(ops::write(derived()));
         }
 
       private:

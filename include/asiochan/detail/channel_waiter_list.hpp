@@ -12,45 +12,42 @@ namespace asiochan::detail
 {
     using select_waiter_token = std::size_t;
 
+    template <asio::execution::executor Executor>
     struct select_wait_context
     {
-        async_promise<select_waiter_token> promise;
+        async_promise<select_waiter_token, Executor> promise;
         std::mutex mutex;
         bool avail_flag = true;
     };
 
-    auto claim(std::same_as<select_wait_context> auto&... contexts) -> bool
+    template <asio::execution::executor Executor>
+    auto claim(select_wait_context<Executor>& ctx) -> bool
     {
-        auto const lock = std::scoped_lock{contexts.mutex...};
-        if ((contexts.avail_flag and ...))
-        {
-            ((contexts.avail_flag = false), ...);
-            return true;
-        }
-        return false;
+        auto const lock = std::scoped_lock{ctx.mutex};
+        return std::exchange(ctx.avail_flag, false);
     }
 
-    template <sendable T>
+    template <sendable T, asio::execution::executor Executor>
     struct channel_waiter_list_node
     {
-        select_wait_context* ctx = nullptr;
+        select_wait_context<Executor>* ctx = nullptr;
         send_slot<T>* slot = nullptr;
         select_waiter_token token = 0;
         channel_waiter_list_node* prev = nullptr;
         channel_waiter_list_node* next = nullptr;
     };
 
-    template <sendable T>
-    void notify_waiter(channel_waiter_list_node<T>& waiter)
+    template <sendable T, asio::execution::executor Executor>
+    void notify_waiter(channel_waiter_list_node<T, Executor>& waiter)
     {
         waiter.ctx->promise.set_value(waiter.token);
     }
 
-    template <sendable T>
+    template <sendable T, asio::execution::executor Executor>
     class channel_waiter_list
     {
       public:
-        using node_type = channel_waiter_list_node<T>;
+        using node_type = channel_waiter_list_node<T, Executor>;
 
         void enqueue(node_type& node) noexcept
         {
@@ -91,21 +88,26 @@ namespace asiochan::detail
             }
         }
 
-        auto dequeue_first_available(std::same_as<select_wait_context> auto&... contexts) noexcept -> node_type*
+        auto dequeue_first_available(
+            std::same_as<select_wait_context<Executor>> auto&... contexts) noexcept
+            -> node_type*
         {
             while (first_)
             {
                 auto const node = first_;
-                first_ = node->next;
-                if (not first_)
-                {
-                    last_ = nullptr;
-                }
-                else
-                {
-                    first_->prev = nullptr;
-                    node->next = nullptr;
-                }
+
+                auto const pop = [&]() {
+                    first_ = node->next;
+                    if (not first_)
+                    {
+                        last_ = nullptr;
+                    }
+                    else
+                    {
+                        first_->prev = nullptr;
+                        node->next = nullptr;
+                    }
+                };
 
                 auto const lock = std::scoped_lock{node->ctx->mutex, contexts.mutex...};
                 if (node->ctx->avail_flag)
@@ -118,8 +120,12 @@ namespace asiochan::detail
                     node->ctx->avail_flag = false;
                     ((contexts.avail_flag = false), ...);
 
+                    pop();
+
                     return node;
                 }
+
+                pop();
             }
 
             return nullptr;
