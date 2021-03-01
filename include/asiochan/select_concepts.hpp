@@ -26,7 +26,7 @@ namespace asiochan
         typename std::bool_constant<T::always_waitfree>;
 
         { op.submit_if_ready() }
-            -> std::same_as<asio::awaitable<std::optional<std::size_t>>>;
+            -> std::same_as<std::optional<std::size_t>>;
 
         { op.get_result(successful_alternative) }
             -> std::same_as<typename T::result_type>;
@@ -51,10 +51,9 @@ namespace asiochan
               requires requires (typename T::wait_state_type& wait_state)
               {
                   { op.submit_with_wait(select_ctx, base_token, wait_state) }
-                      -> std::same_as<asio::awaitable<select_waitful_submit_result>>;
+                      -> std::same_as<select_waitful_submit_result>;
 
-                  { op.clear_wait(successful_alternative, wait_state) }
-                      -> std::same_as<asio::awaitable<void>>;
+                  op.clear_wait(successful_alternative, wait_state);
               };
           };
 
