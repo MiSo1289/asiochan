@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <exception>
+#include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <tuple>
@@ -21,108 +22,116 @@
 namespace asiochan
 {
     // clang-format off
-    template <select_op... Ops>
+    template <select_op... Ops,
+              asio::execution::executor Executor = typename detail::head_t<Ops...>::executor_type>
     requires waitable_selection<Ops...>
-    [[nodiscard]] auto select(Ops... ops_args) -> asio::awaitable<select_result<Ops...>>
+    [[nodiscard]] auto select(Ops... ops_args)
+        -> asio::awaitable<select_result<Ops...>, Executor>
     // clang-format on
     {
-        auto executor = co_await asio::this_coro::executor;
         auto result = std::optional<select_result<Ops...>>{};
-        auto exception = std::optional<std::exception_ptr>{};
+        auto submit_mutex = std::mutex{};
+        auto wait_ctx = detail::select_wait_context<Executor>{};
+        auto ops_wait_states = std::tuple<typename Ops::wait_state_type...>{};
 
-        try
-        {
-            // Prepare state
-            auto ops = std::tie(ops_args...);
-            auto strand = std::get<0>(ops).strand();
-            auto select_ctx = detail::select_wait_context{};
-            auto submit_completion_promise = async_promise<void>{};
-            auto submit_completed = false;
-            auto ops_wait_states = std::tuple<typename Ops::wait_state_type...>{};
+        auto const success_token = co_await suspend_with_promise<detail::select_waiter_token, Executor>(
+            [](async_promise<detail::select_waiter_token, Executor>&& promise,
+               auto* const submit_mutex,
+               auto* const wait_ctx,
+               auto* const ops_wait_states,
+               auto* const... ops_args) {
+                wait_ctx->promise = std::move(promise);
 
-            // Acquire the first operation's strand before awaiting on the promise
-            co_await asio::dispatch(strand, asio::use_awaitable);
+                auto ready_token = std::optional<std::size_t>{};
 
-            asio::co_spawn(
-                executor,
-                detail::select_waitful_submit(
-                    ops,
-                    strand,
-                    submit_completed,
-                    submit_completion_promise,
-                    ops_wait_states,
-                    select_ctx,
-                    std::index_sequence_for<Ops...>{}),
-                asio::detached);
+                {
+                    auto const submit_lock = std::scoped_lock{*submit_mutex};
 
-            // Wait until one of the operations succeeds
-            auto const successful_sub_op = co_await select_ctx.promise.get_awaitable();
+                    ([&]<std::size_t... indices>(std::index_sequence<indices...>) {
+                        ([&]<std::size_t channel_index>(auto& op, detail::constant<channel_index>) {
+                            constexpr auto op_base_token = detail::select_ops_base_tokens<Ops...>[channel_index];
 
-            // Synchronize with submission routine
-            co_await asio::dispatch(strand, asio::use_awaitable);
-            if (not submit_completed)
-            {
-                co_await submit_completion_promise.get_awaitable();
-            }
+                            if (auto const ready_alternative = op.submit_with_wait(
+                                    *wait_ctx,
+                                    op_base_token,
+                                    std::get<channel_index>(*ops_wait_states)))
+                            {
+                                ready_token = op_base_token + *ready_alternative;
 
-            // Clear remaining waits
-            result = co_await detail::select_clear(
-                ops,
-                ops_wait_states,
-                successful_sub_op,
-                std::index_sequence_for<Ops...>{});
-        }
-        catch (...)
-        {
-            exception = std::current_exception();
-        }
+                                return true;
+                            }
 
-        // Exit any strand that the operation ended on
-        co_await asio::post(executor, asio::use_awaitable);
+                            return false;
+                        }(*ops_args, detail::constant<indices>{})
+                         or ...);
+                    }(std::index_sequence_for<Ops...>{}));
+                }
 
-        assert(result.has_value() or exception.has_value());
+                if (ready_token)
+                {
+                    wait_ctx->promise.set_value(*ready_token);
+                }
+            },
+            &submit_mutex,
+            &wait_ctx,
+            &ops_wait_states,
+            &ops_args...);
 
-        if (not exception)
-        {
-            co_return std::move(*result);
-        }
+        auto const submit_lock = std::scoped_lock{submit_mutex};
 
-        std::rethrow_exception(std::move(*exception));
+        ([&]<std::size_t... indices>(std::index_sequence<indices...>) {
+            ([&]<select_op Op, std::size_t channel_index>(Op& op, detail::constant<channel_index>) {
+                constexpr auto op_base_token = detail::select_ops_base_tokens<Ops...>[channel_index];
+
+                auto successful_alternative = std::optional<std::size_t>{};
+
+                if (success_token >= op_base_token
+                    and success_token < op_base_token + Op::num_alternatives)
+                {
+                    successful_alternative = success_token - op_base_token;
+                    result.emplace(op.get_result(*successful_alternative), success_token);
+                }
+
+                op.clear_wait(
+                    successful_alternative,
+                    std::get<channel_index>(ops_wait_states));
+            }(ops_args, detail::constant<indices>{}),
+             ...);
+        }(std::index_sequence_for<Ops...>{}));
+
+        assert(result.has_value());
+
+        co_return std::move(*result);
     }
 
     // clang-format off
     template <select_op... Ops>
     requires waitfree_selection<Ops...>
-    [[nodiscard]] auto select(Ops... ops_args) -> asio::awaitable<select_result<Ops...>>
+    auto select_ready(Ops... ops_args) -> select_result<Ops...>
     // clang-format on
     {
-        auto executor = co_await asio::this_coro::executor;
         auto result = std::optional<select_result<Ops...>>{};
-        auto exception = std::optional<std::exception_ptr>{};
 
-        try
-        {
-            auto ops = std::tie(ops_args...);
-            co_await detail::select_waitfree_submit(
-                ops,
-                result,
-                std::index_sequence_for<Ops...>{});
-        }
-        catch (...)
-        {
-            exception = std::current_exception();
-        }
+        ([&]<std::size_t... indices>(std::index_sequence<indices...>) {
+            ([&]<std::size_t channel_index>(auto& op, detail::constant<channel_index>) {
+                constexpr auto op_base_token = detail::select_ops_base_tokens<Ops...>[channel_index];
 
-        // Exit any strand that the operation ended on
-        co_await asio::post(executor, asio::use_awaitable);
+                if (auto const ready_alternative = op.submit_if_ready())
+                {
+                    result.emplace(
+                        op.get_result(*ready_alternative),
+                        op_base_token + *ready_alternative);
 
-        assert(result.has_value() or exception.has_value());
+                    return true;
+                }
 
-        if (not exception)
-        {
-            co_return std::move(*result);
-        }
+                return false;
+            }(ops_args, detail::constant<indices>{})
+             or ...);
+        }(std::index_sequence_for<Ops...>{}));
 
-        std::rethrow_exception(std::move(*exception));
+        assert(result.has_value());
+
+        return std::move(*result);
     }
 }  // namespace asiochan

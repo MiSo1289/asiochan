@@ -73,21 +73,27 @@ namespace asiochan
         class read
         {
           public:
+            using executor_type = typename ChannelsHead::executor_type;
             using result_type = read_result<T>;
             using slot_type = detail::send_slot<T>;
-            using waiter_node_type = detail::channel_waiter_list_node<T>;
+            using waiter_node_type = detail::channel_waiter_list_node<T, executor_type>;
 
             static constexpr auto num_alternatives = 1u + sizeof...(ChannelsTail);
             static constexpr auto always_waitfree = false;
 
             struct wait_state_type
             {
-                std::array<std::optional<detail::channel_waiter_list_node<T>>, num_alternatives> waiter_nodes = {};
+                std::array<std::optional<waiter_node_type>, num_alternatives> waiter_nodes = {};
             };
 
             explicit read(ChannelsHead& channels_head, ChannelsTail&... channels_tail) noexcept
               : channels_{channels_head, channels_tail...}
             {
+            }
+
+            [[nodiscard]] auto get_executor() const -> executor_type
+            {
+                return std::get<0>(channels_).get_executor();
             }
 
             [[nodiscard]] auto submit_if_ready() -> std::optional<std::size_t>
@@ -140,13 +146,15 @@ namespace asiochan
             }
 
             [[nodiscard]] auto submit_with_wait(
-                detail::select_wait_context& select_ctx,
+                detail::select_wait_context<executor_type>& select_ctx,
                 detail::select_waiter_token const base_token,
                 wait_state_type& wait_state)
-                -> select_waitful_submit_result
+                -> std::optional<std::size_t>
             {
                 return ([&]<std::size_t... indices>(std::index_sequence<indices...>) {
-                    auto const is_ready = ([&]<typename ChannelState>(ChannelState& channel_state) {
+                    auto ready_alternative = std::optional<std::size_t>{};
+
+                    ([&]<typename ChannelState>(ChannelState& channel_state) {
                         constexpr auto channel_index = indices;
                         auto const token = base_token + channel_index;
                         auto const lock = std::scoped_lock{channel_state.mutex()};
@@ -175,7 +183,7 @@ namespace asiochan
                                     }
                                 }
 
-                                select_ctx.promise.set_value(token);
+                                ready_alternative = channel_index;
 
                                 return true;
                             }
@@ -185,7 +193,7 @@ namespace asiochan
                             // Get a value directly from a waiting writer.
                             transfer(*writer->slot, slot_);
                             detail::notify_waiter(*writer);
-                            select_ctx.promise.set_value(token);
+                            ready_alternative = channel_index;
 
                             return true;
                         }
@@ -203,9 +211,7 @@ namespace asiochan
                     }(std::get<indices>(channels_).shared_state())
                                            or ...);
 
-                    return is_ready
-                               ? select_waitful_submit_result::completed_waitfree
-                               : select_waitful_submit_result::waiting;
+                    return ready_alternative;
                 }(std::index_sequence_for<ChannelsHead, ChannelsTail...>{}));
             }
 
@@ -216,7 +222,7 @@ namespace asiochan
                 ([&]<std::size_t... indices>(std::index_sequence<indices...>) {
                     ([&](auto& channel_state) {
                         constexpr auto channel_index = indices;
-                        auto& waiter_node = *wait_state.waiter_nodes[channel_index];
+                        auto& waiter_node = wait_state.waiter_nodes[channel_index];
 
                         if (channel_index == successful_alternative or not waiter_node.has_value())
                         {
@@ -225,13 +231,13 @@ namespace asiochan
                         }
 
                         auto const lock = std::scoped_lock{channel_state.mutex()};
-                        channel_state.reader_list().dequeue(waiter_node);
+                        channel_state.reader_list().dequeue(*waiter_node);
                     }(std::get<indices>(channels_).shared_state()),
                      ...);
                 }(std::index_sequence_for<ChannelsHead, ChannelsTail...>{}));
             }
 
-            auto get_result(std::size_t const successful_alternative) noexcept -> result_type
+            [[nodiscard]] auto get_result(std::size_t const successful_alternative) noexcept -> result_type
             {
                 auto result = std::optional<result_type>{};
 

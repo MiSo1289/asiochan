@@ -68,7 +68,7 @@ namespace asiochan
         struct async_promise_traits<void, Executor>
         {
             using handler_sig = void(std::exception_ptr error);
-            using impl_type = std::optional < asio::detail::awaitable_handler<Executor, std::exception_ptr>;
+            using impl_type = std::optional<asio::detail::awaitable_handler<Executor, std::exception_ptr>>;
         };
     }  // namespace detail
 
@@ -78,6 +78,21 @@ namespace asiochan
       public:
         async_promise() noexcept = default;
 
+        async_promise(async_promise&& other) noexcept
+          : impl_{std::move(other.impl_)} { }
+
+        auto operator=(async_promise&& other) -> async_promise&
+        {
+            reset();
+
+            if (other.valid())
+            {
+                impl_.emplace(*std::move(other.impl_));
+            }
+
+            return *this;
+        }
+
         template <std::convertible_to<T> U>
         void set_value(U&& value)
         {
@@ -85,8 +100,7 @@ namespace asiochan
             auto executor = asio::get_associated_executor(*impl_);
             asio::post(
                 std::move(executor),
-                std::bind_front(std::move(*impl_), nullptr, T{std::forward<U>(value)}));
-            impl_.reset();
+                std::bind_front(consume_impl(), nullptr, T{std::forward<U>(value)}));
         }
 
         void set_value() requires std::is_void_v<T>
@@ -95,8 +109,7 @@ namespace asiochan
             auto executor = asio::get_associated_executor(*impl_);
             asio::post(
                 std::move(executor),
-                std::bind_front(std::move(*impl_), nullptr));
-            impl_.reset();
+                std::bind_front(consume_impl(), nullptr));
         }
 
         void set_exception(std::exception_ptr error) requires std::default_initializable<T>
@@ -151,9 +164,9 @@ namespace asiochan
         }
 
         // clang-format off
-        template <std::invocable Continuation>
-        requires std::movable<Continuation>
-        [[nodiscard]] auto get_awaitable(Continuation continuation)
+        template <std::move_constructible Continuation, std::move_constructible... Args>
+        requires std::invocable<Continuation, Args&&...>
+        [[nodiscard]] auto get_awaitable(Continuation continuation, Args... args)
             -> asio::awaitable<T, Executor>
         // clang-format on
         {
@@ -161,28 +174,46 @@ namespace asiochan
             return asio::async_initiate<
                 asio::use_awaitable_t<Executor> const,
                 typename traits_type::handler_sig>(
-                [this, continuation = std::move(continuation)](auto&& resumeCb) mutable {
-                    impl_.emplace(std::move(resumeCb));
-                    std::invoke(std::move(continuation));
+                [](auto&& resumeCb, auto* self, auto continuation, auto... args) {
+                    self->impl_.emplace(std::move(resumeCb));
+                    std::invoke(std::move(continuation), std::move(args)...);
                 },
-                asio::use_awaitable_t<Executor>{});
+                asio::use_awaitable_t<Executor>{},
+                this,
+                std::move(continuation),
+                std::move(args)...);
         }
 
       private:
         using traits_type = detail::async_promise_traits<T, Executor>;
 
         typename traits_type::impl_type impl_;
+
+        [[nodiscard]] auto consume_impl()
+        {
+            assert(valid());
+            auto result = std::move(*impl_);
+            impl_.reset();
+            return result;
+        }
     };
 
+    // clang-format off
     template <sendable T = void,
-              asio::execution::executor Executor = asio::any_io_executor>
-    [[nodiscard]] auto suspend_coro(
-        std::invocable<async_promise<T, Executor>&&> auto promise_acceptor)
+              asio::execution::executor Executor = asio::any_io_executor,
+              std::move_constructible Continuation,
+              std::move_constructible... Args>
+    requires std::invocable<Continuation, async_promise<T, Executor>&&, Args&&...>
+    [[nodiscard]] auto suspend_with_promise(Continuation continuation, Args... args)
         -> asio::awaitable<T, Executor>
+    // clang-format on
     {
         auto promise = async_promise<T, Executor>{};
-        co_return co_await promise.get_awaitable([&]() {
-            std::invoke(std::move(promise_acceptor), std::move(promise));
-        });
+        co_return co_await promise.get_awaitable(
+            [&promise](auto continuation, auto... args) {
+                std::invoke(std::move(continuation), std::move(promise), std::move(args)...);
+            },
+            std::move(continuation),
+            std::move(args)...);
     }
 }  // namespace asiochan

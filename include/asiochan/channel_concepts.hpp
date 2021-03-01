@@ -15,12 +15,20 @@ namespace asiochan
 
     // clang-format off
     template <typename T>
-    concept any_channel_type = requires (T& channel)
+    concept any_channel_type = requires (T& channel, T const& const_channel)
     {
+        typename T::executor_type;
+        requires asio::execution::executor<typename T::executor_type>;
+
         typename T::shared_state_type;
         typename T::send_type;
 
-        requires detail::channel_shared_state_type<typename T::shared_state_type, typename T::send_type>;
+        requires detail::channel_shared_state_type<
+                     typename T::shared_state_type,
+                     typename T::send_type,
+                     typename T::executor_type>;
+
+        { const_channel.get_executor() } -> std::same_as<typename T::executor_type>;
 
         { channel.shared_state() } noexcept -> std::same_as<typename T::shared_state_type&>;
     };

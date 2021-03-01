@@ -1,5 +1,6 @@
 #pragma once
 
+#include <mutex>
 #include <type_traits>
 
 #include "asiochan/asio.hpp"
@@ -11,11 +12,11 @@
 
 namespace asiochan::detail
 {
-    template <sendable T, bool enabled>
+    template <sendable T, asio::execution::executor Executor, bool enabled>
     class channel_shared_state_writer_list_base
     {
       public:
-        using writer_list_type = channel_waiter_list<T>;
+        using writer_list_type = channel_waiter_list<T, Executor>;
 
         static constexpr bool write_never_waits = false;
 
@@ -28,8 +29,8 @@ namespace asiochan::detail
         writer_list_type writer_list_;
     };
 
-    template <sendable T>
-    class channel_shared_state_writer_list_base<T, false>
+    template <sendable T, asio::execution::executor Executor>
+    class channel_shared_state_writer_list_base<T, Executor, false>
     {
       public:
         using writer_list_type = void;
@@ -37,14 +38,14 @@ namespace asiochan::detail
         static constexpr bool write_never_waits = true;
     };
 
-    template <sendable T, channel_buff_size buff_size_>
+    template <sendable T, asio::execution::executor Executor, channel_buff_size buff_size_>
     class channel_shared_state
-      : public channel_shared_state_writer_list_base<T, buff_size_ != unbounded_channel_buff>
+      : public channel_shared_state_writer_list_base<T, Executor, buff_size_ != unbounded_channel_buff>
     {
       public:
         using mutex_type = std::mutex;
         using buffer_type = channel_buffer<T, buff_size_>;
-        using reader_list_type = channel_waiter_list<T>;
+        using reader_list_type = channel_waiter_list<T, Executor>;
 
         static constexpr auto buff_size = buff_size_;
 
@@ -69,25 +70,28 @@ namespace asiochan::detail
         [[no_unique_address]] buffer_type buffer_;
     };
 
-    template <typename T, typename SendType>
+    template <typename T, sendable SendType, asio::execution::executor Executor>
     struct is_channel_shared_state
       : std::false_type
     {
     };
 
-    template <sendable SendType, channel_buff_size buff_size>
+    template <sendable SendType,
+              asio::execution::executor Executor,
+              channel_buff_size buff_size>
     struct is_channel_shared_state<
-        channel_shared_state<SendType, buff_size>,
-        SendType>
+        channel_shared_state<SendType, Executor, buff_size>,
+        SendType,
+        Executor>
       : std::true_type
     {
     };
 
-    template <typename T, sendable SendType>
+    template <typename T, sendable SendType, asio::execution::executor Executor>
     inline constexpr auto is_channel_shared_state_type_v
-        = is_channel_shared_state<T, SendType>::value;
+        = is_channel_shared_state<T, SendType, Executor>::value;
 
-    template <typename T, typename SendType>
+    template <typename T, typename SendType, typename Executor>
     concept channel_shared_state_type
-        = is_channel_shared_state_type_v<T, SendType>;
+        = is_channel_shared_state_type_v<T, SendType, Executor>;
 }  // namespace asiochan::detail

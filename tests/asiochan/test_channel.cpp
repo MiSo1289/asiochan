@@ -64,36 +64,22 @@ TEST_CASE("Channels")
         auto read_channel = asiochan::read_channel<int, buffer_size>{channel};
         auto write_channel = asiochan::write_channel<int, buffer_size>{channel};
 
-        auto source_task = asio::co_spawn(
-            thread_pool,
-            [write_channel]() mutable -> asio::awaitable<void> {
-                for (auto const i : std::views::iota(0, buffer_size))
-                {
-                    auto const was_sent = co_await write_channel.try_write(i);
-                    CHECK(was_sent);
-                }
-                auto const last_was_sent = co_await write_channel.try_write(0);
-                CHECK(not last_was_sent);
-            },
-            asio::use_future);
+        for (auto const i : std::views::iota(0, buffer_size))
+        {
+            auto const was_sent = write_channel.try_write(i);
+            CHECK(was_sent);
+        }
+        auto const last_was_sent = write_channel.try_write(0);
+        CHECK(not last_was_sent);
 
-        source_task.get();
-
-        auto sink_task = asio::co_spawn(
-            thread_pool,
-            [read_channel]() mutable -> asio::awaitable<void> {
-                for (auto const i : std::views::iota(0, buffer_size))
-                {
-                    auto const recv = co_await read_channel.try_read();
-                    REQUIRE(recv.has_value());
-                    CHECK(*recv == i);
-                }
-                auto const last_recv = co_await read_channel.try_read();
-                CHECK(not last_recv.has_value());
-            },
-            asio::use_future);
-
-        sink_task.get();
+        for (auto const i : std::views::iota(0, buffer_size))
+        {
+            auto const recv = read_channel.try_read();
+            REQUIRE(recv.has_value());
+            CHECK(*recv == i);
+        }
+        auto const last_recv = read_channel.try_read();
+        CHECK(not last_recv.has_value());
     }
 
     SECTION("Buffered channel of void")
@@ -104,35 +90,21 @@ TEST_CASE("Channels")
         auto read_channel = asiochan::read_channel<void, buffer_size>{channel};
         auto write_channel = asiochan::write_channel<void, buffer_size>{channel};
 
-        auto source_task = asio::co_spawn(
-            thread_pool,
-            [write_channel]() mutable -> asio::awaitable<void> {
-                for (auto const i : std::views::iota(0, buffer_size))
-                {
-                    auto const was_sent = co_await write_channel.try_write();
-                    CHECK(was_sent);
-                }
-                auto const last_was_sent = co_await write_channel.try_write();
-                CHECK(not last_was_sent);
-            },
-            asio::use_future);
+        for (auto const i : std::views::iota(0, buffer_size))
+        {
+            auto const was_sent = write_channel.try_write();
+            CHECK(was_sent);
+        }
+        auto const last_was_sent = write_channel.try_write();
+        CHECK(not last_was_sent);
 
-        source_task.get();
-
-        auto sink_task = asio::co_spawn(
-            thread_pool,
-            [read_channel]() mutable -> asio::awaitable<void> {
-                for (auto const i : std::views::iota(0, buffer_size))
-                {
-                    auto const recv = co_await read_channel.try_read();
-                    CHECK(recv);
-                }
-                auto const last_recv = co_await read_channel.try_read();
-                CHECK(not last_recv);
-            },
-            asio::use_future);
-
-        sink_task.get();
+        for (auto const i : std::views::iota(0, buffer_size))
+        {
+            auto const recv = read_channel.try_read();
+            CHECK(recv);
+        }
+        auto const last_recv = read_channel.try_read();
+        CHECK(not last_recv);
     }
 
     SECTION("Unbounded buffered channel")
@@ -143,32 +115,18 @@ TEST_CASE("Channels")
         auto read_channel = asiochan::unbounded_read_channel<int>{channel};
         auto write_channel = asiochan::unbounded_write_channel<int>{channel};
 
-        auto source_task = asio::co_spawn(
-            thread_pool,
-            [write_channel]() mutable -> asio::awaitable<void> {
-                for (auto const i : std::views::iota(0, num_tokens))
-                {
-                    co_await write_channel.write(i);
-                }
-            },
-            asio::use_future);
+        for (auto const i : std::views::iota(0, num_tokens))
+        {
+            write_channel.write(i);
+        }
 
-        source_task.get();
-
-        auto sink_task = asio::co_spawn(
-            thread_pool,
-            [read_channel]() mutable -> asio::awaitable<void> {
-                for (auto const i : std::views::iota(0, num_tokens))
-                {
-                    auto const recv = co_await read_channel.try_read();
-                    CHECK(recv == i);
-                }
-                auto const last_recv = co_await read_channel.try_read();
-                CHECK(not last_recv.has_value());
-            },
-            asio::use_future);
-
-        sink_task.get();
+        for (auto const i : std::views::iota(0, num_tokens))
+        {
+            auto const recv = read_channel.try_read();
+            CHECK(recv == i);
+        }
+        auto const last_recv = read_channel.try_read();
+        CHECK(not last_recv.has_value());
     }
 
     SECTION("Multiple writers and receivers")

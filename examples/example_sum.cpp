@@ -1,3 +1,4 @@
+#include <chrono>
 #include <cstdlib>
 #include <iostream>
 #include <numeric>
@@ -75,13 +76,18 @@ auto main() -> int
 {
     auto tp = asio::thread_pool{};
 
-    auto numbers = std::vector<int>(100);
+    auto numbers = std::vector<int>(10'000);
     std::iota(numbers.begin(), numbers.end(), 1);
 
-    auto task = asio::co_spawn(tp, sum_task(numbers, 10), asio::use_future);
+    auto start = std::chrono::steady_clock::now();
 
+    auto task = asio::co_spawn(tp, sum_task(numbers, 100), asio::use_future);
     auto result = task.get();
-    std::cout << "The result is " << result;
+
+    auto dur = std::chrono::steady_clock::now() - start;
+
+    std::cout << "The result is: " << result << "\n";
+    std::cout << "Test duration: " << std::chrono::duration<double>{dur}.count() << "s\n";
 
     return EXIT_SUCCESS;
 }

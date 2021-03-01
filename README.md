@@ -79,7 +79,7 @@ auto main() -> int
 
 ### Features
 
-- Thread safety - all channel types are thread-safe, relying on ASIO strands.
+- Thread safety - all channel types are thread-safe.
 - Value semantics - channels are intended to be passed by value. Internally, a channel holds a `shared_ptr` to a shared state type, similar to `future` and `promise`. 
 - Bidirectional - channels are bidirectional by default, but can be restricted to write or read only (similar to channels in golang).
 - Synchronization - by default, a writer will wait until someone reads the value. Readers and writers are queued in FIFO order. Similar to golang channels, it is possible to specify a buffer size; writing is wait-free as long as there is space in the buffer. A dynamically sized buffer that is always wait-free for the writer is also available.
@@ -147,11 +147,11 @@ auto chan4 = std::move(chan2);  // Move constructor - chan2 is now invalid.
 #### Read
 ```c++
 channel<int> chan{ioc};
-std::optional<int> maybe_result = co_await chan.try_read();
+std::optional<int> maybe_result = chan.try_read();
 int result = co_await chan.read();
 
 channel<void> chan_void{ioc};
-bool success = co_await chan_void.try_read();
+bool success = chan_void.try_read();
 co_await chan_void.read();
 ```
 
@@ -161,10 +161,10 @@ The `read` method will wait until a value is ready.
 
 #### Write
 ```c++
-bool success = co_await chan.try_write(1);
+bool success = chan.try_write(1);
 co_await chan.write(1);
 
-bool success = co_await chan_void.try_write();
+bool success = chan_void.try_write();
 co_await chan_void.write();
 ```
 
@@ -172,7 +172,7 @@ The `try_write` method do not perform any waiting. If no waiter was ready and th
 
 The `write` method will wait until a reader is ready.
 
-Note that for unbounded buffered channels, the `try_write` method is not available, as writes always succeed without waiting.
+Note that for unbounded buffered channels, writing always succeeds and is without wait. To reflect this fact, the `try_write` method is not available, and `write` can be called without `co_await`.
 
 #### Select
 ```c++
@@ -206,10 +206,10 @@ if (result.received<int>())
 }
 ```
 
-To not wait if no operation is ready, a `nothing` operation can be used. It must appear as the last argument to select.
+If you don't want to wait until some operation becomes ready, you can use the wait-free function `select_ready`. It must be passed some default wait-free operation as the last argument. An example of a wait-free operation is `nothing`:
 
 ```c++
-auto result = co_await select(
+auto result = select_ready(
     ops::read(chan_int_1),
     ops::write(std::rand(), chan_int_2),
     ops::nothing);
@@ -219,8 +219,11 @@ bool any_succeeded = result.has_value();
 // .. and the result is contextually convertible to bool.
 if (result)
 {
+    // ...
 }
 ```
+
+Writing to an unbounded channel is also a wait-free operation, and can be thus be used as the default operation for `select_ready`.
 
 The `read` and `write` operations can accept multiple channels.
 This allows you to `select` between multiple write channels with the same `send_type` without copying the sent value:
@@ -233,7 +236,7 @@ auto string_send_result = co_await select(
     ops::write(std::move(long_string), chan_1, chan_2));
 ```
 
-The `select_result` type remembers the shared state of the channel for which an operation succeeded. This allows disambiguation bettween channels of the same `send_type`:
+The `select_result` type remembers the shared state of the channel for which an operation succeeded. This allows disambiguation between channels of the same `send_type`:
 
 ```c++
 bool sent_to_chan_1 = string_send_result.sent_to(chan_1);
@@ -247,8 +250,6 @@ bool recv_from_chan_2 = string_recv_result.received_from(chan_2);
 // Similar to get_if<T>()
 std::string* result = string_recv_result.get_if_received_from(chan_1);
 ```
-
-Note: when writing to an unbounded channel with `select`, the corresponding `write` operation must appear last, similar to the `nothing` operation. If that `write` operation targets multiple channels, the unbounded channel must be last too.
 
 ##### Example: timeouts
 

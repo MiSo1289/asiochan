@@ -29,17 +29,23 @@ namespace asiochan
         class nothing_t
         {
           public:
+            using executor_type = asio::system_executor;
             using result_type = no_result_t;
 
             static constexpr auto num_alternatives = std::size_t{1};
             static constexpr auto always_waitfree = true;
 
-            static auto submit_if_ready() -> asio::awaitable<std::optional<std::size_t>>
+            [[nodiscard]] static auto get_executor() -> executor_type
             {
-                co_return 0;
+                return asio::system_executor{};
             }
 
-            static auto get_result(
+            [[nodiscard]] static auto submit_if_ready() noexcept -> std::optional<std::size_t>
+            {
+                return 0;
+            }
+
+            [[nodiscard]] static auto get_result(
                 [[maybe_unused]] std::optional<std::size_t> successful_alternative) noexcept
                 -> no_result_t
             {

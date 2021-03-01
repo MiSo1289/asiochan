@@ -19,11 +19,16 @@ namespace asiochan
 
     // clang-format off
     template <typename T>
-    concept select_op = requires (T& op, std::size_t const& successful_alternative)
+    concept select_op = requires (T& op, T const& const_op, std::size_t const& successful_alternative)
     {
+        typename T::executor_type;
+        requires asio::execution::executor<typename T::executor_type>;
+
         typename T::result_type;
         typename std::integral_constant<std::size_t, T::num_alternatives>;
         typename std::bool_constant<T::always_waitfree>;
+
+        { const_op.get_executor() } -> std::same_as<typename T::executor_type>;
 
         { op.submit_if_ready() }
             -> std::same_as<std::optional<std::size_t>>;
@@ -41,7 +46,7 @@ namespace asiochan
           and not waitfree_select_op<T>
           and requires (
               T& op,
-              detail::select_wait_context& select_ctx,
+              detail::select_wait_context<typename T::executor_type>& select_ctx,
               detail::select_waiter_token const& base_token,
               std::optional<std::size_t> const& successful_alternative)
           {
@@ -51,7 +56,7 @@ namespace asiochan
               requires requires (typename T::wait_state_type& wait_state)
               {
                   { op.submit_with_wait(select_ctx, base_token, wait_state) }
-                      -> std::same_as<select_waitful_submit_result>;
+                      -> std::same_as<std::optional<std::size_t>>;
 
                   op.clear_wait(successful_alternative, wait_state);
               };
