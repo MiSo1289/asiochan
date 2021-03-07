@@ -92,6 +92,7 @@ namespace asiochan
                             // Wake the oldest reader and give him a value.
                             transfer(slot_, *reader->slot);
                             detail::notify_waiter(*reader);
+                            ready_alternative = channel_index;
 
                             return true;
                         }
