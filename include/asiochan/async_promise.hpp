@@ -81,13 +81,16 @@ namespace asiochan
         async_promise(async_promise&& other) noexcept
           : impl_{std::move(other.impl_)} { }
 
-        auto operator=(async_promise&& other) -> async_promise&
+        auto operator=(async_promise&& other) noexcept -> async_promise&
         {
-            reset();
-
-            if (other.valid())
+            if (this != &other)
             {
-                impl_.emplace(*std::move(other.impl_));
+                reset();
+
+                if (other.valid())
+                {
+                    impl_.emplace(*std::move(other.impl_));
+                }
             }
 
             return *this;
