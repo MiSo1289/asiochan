@@ -328,8 +328,4 @@ By default, Boost.ASIO is used. To use with standalone ASIO:
 
 #### Conan package
 
-If you use Conan to manage dependencies, you can get this library from [my artifactory](https://miso1289.jfrog.io/ui/packages/conan:%2F%2Fasiochan?name=asiochan&type=packages):
-```console
-$ conan remote add miso1289 https://miso1289.jfrog.io/artifactory/api/conan/miso1289
-$ conan install asiochan/0.4.1@miso1289/stable
-```
+If you use Conan to manage dependencies, you can install the library by cloning the repository, and running `conan create <path-to-repo>`.
