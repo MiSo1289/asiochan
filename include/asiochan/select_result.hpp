@@ -69,8 +69,10 @@ namespace asiochan
             // std::holds_alternative does not support multiple type occurrence
             return std::visit(
                 detail::overloaded{
-                    [](T const&) { return true; },
-                    [](auto const&) { return false; },
+                    [](T const&)
+                    { return true; },
+                    [](auto const&)
+                    { return false; },
                 },
                 result_);
         }
@@ -119,7 +121,8 @@ namespace asiochan
             using SendType = typename T::send_type;
 
             return std::visit(
-                [&](auto const& result) { return result.matches(channel); },
+                [&](auto const& result)
+                { return result.matches(channel); },
                 result_);
         }
 
@@ -133,8 +136,10 @@ namespace asiochan
 
             return std::visit(
                 detail::overloaded{
-                    [&](read_result<SendType> const& result) { return result.matches(channel); },
-                    [](auto const&) { return false; },
+                    [&](read_result<SendType> const& result)
+                    { return result.matches(channel); },
+                    [](auto const&)
+                    { return false; },
                 },
                 result_);
         }
@@ -149,8 +154,10 @@ namespace asiochan
 
             return std::visit(
                 detail::overloaded{
-                    [&](write_result<SendType> const& result) { return result.matches(channel); },
-                    [](auto const&) { return false; },
+                    [&](write_result<SendType> const& result)
+                    { return result.matches(channel); },
+                    [](auto const&)
+                    { return false; },
                 },
                 result_);
         }

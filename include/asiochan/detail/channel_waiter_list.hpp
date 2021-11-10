@@ -96,7 +96,8 @@ namespace asiochan::detail
             {
                 auto const node = first_;
 
-                auto const pop = [&]() {
+                auto const pop = [&]()
+                {
                     first_ = node->next;
                     if (not first_)
                     {

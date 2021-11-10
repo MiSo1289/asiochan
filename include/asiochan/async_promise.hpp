@@ -177,7 +177,8 @@ namespace asiochan
             return asio::async_initiate<
                 asio::use_awaitable_t<Executor> const,
                 typename traits_type::handler_sig>(
-                [](auto&& resumeCb, auto* self, auto continuation, auto... args) {
+                [](auto&& resumeCb, auto* self, auto continuation, auto... args)
+                {
                     self->impl_.emplace(std::move(resumeCb));
                     std::invoke(std::move(continuation), std::move(args)...);
                 },
@@ -213,7 +214,8 @@ namespace asiochan
     {
         auto promise = async_promise<T, Executor>{};
         co_return co_await promise.get_awaitable(
-            [&promise](auto continuation, auto... args) {
+            [&promise](auto continuation, auto... args)
+            {
                 std::invoke(std::move(continuation), std::move(promise), std::move(args)...);
             },
             std::move(continuation),

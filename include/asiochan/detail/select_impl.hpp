@@ -16,7 +16,8 @@
 namespace asiochan::detail
 {
     template <select_op... Ops>
-    inline constexpr auto select_ops_base_tokens = []() {
+    inline constexpr auto select_ops_base_tokens = []()
+    {
         auto token_base = std::size_t{0};
         return std::array{
             std::exchange(token_base, token_base + Ops::num_alternatives)...,

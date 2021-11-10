@@ -36,7 +36,8 @@ TEST_CASE("Channels")
 
         auto ping_task = asio::co_spawn(
             thread_pool,
-            [channel]() mutable -> asio::awaitable<void> {
+            [channel]() mutable -> asio::awaitable<void>
+            {
                 co_await channel.write("ping");
                 auto const recv = co_await channel.read();
                 CHECK(recv == "pong");
@@ -45,7 +46,8 @@ TEST_CASE("Channels")
 
         auto pong_task = asio::co_spawn(
             thread_pool,
-            [channel]() mutable -> asio::awaitable<void> {
+            [channel]() mutable -> asio::awaitable<void>
+            {
                 auto const recv = co_await channel.read();
                 CHECK(recv == "ping");
                 co_await channel.write("pong");
@@ -147,7 +149,8 @@ TEST_CASE("Channels")
             source_tasks.push_back(
                 asio::co_spawn(
                     thread_pool,
-                    [write_channel, task_id, &source_values]() mutable -> asio::awaitable<void> {
+                    [write_channel, task_id, &source_values]() mutable -> asio::awaitable<void>
+                    {
                         auto const start = task_id * num_tokens_per_task;
                         for (auto const i : std::views::iota(start, start + num_tokens_per_task))
                         {
@@ -164,7 +167,8 @@ TEST_CASE("Channels")
             sink_tasks.push_back(
                 asio::co_spawn(
                     thread_pool,
-                    [read_channel, task_id, &sink_values]() mutable -> asio::awaitable<void> {
+                    [read_channel, task_id, &sink_values]() mutable -> asio::awaitable<void>
+                    {
                         auto const start = task_id * num_tokens_per_task;
                         for (auto const i : std::views::iota(start, start + num_tokens_per_task))
                         {
@@ -174,14 +178,16 @@ TEST_CASE("Channels")
                     asio::use_future));
         }
 
-        for (auto& sink_task : sink_tasks) {
+        for (auto& sink_task : sink_tasks)
+        {
             sink_task.get();
         }
 
         std::ranges::sort(sink_values);
         CHECK(source_values == sink_values);
 
-        for (auto& source_task : source_tasks) {
+        for (auto& source_task : source_tasks)
+        {
             source_task.get();
         }
     }

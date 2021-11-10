@@ -76,8 +76,8 @@ namespace asiochan
         public detail::channel_method_ops<T, Executor, buff_size, bidirectional, basic_channel<T, buff_size, Executor>>
     {
       private:
-        using base = basic_channel::channel_base;
-        using ops = basic_channel::channel_method_ops;
+        using base = channel_base<T, buff_size, bidirectional, Executor>;
+        using ops = detail::channel_method_ops<T, Executor, buff_size, bidirectional, basic_channel<T, buff_size, Executor>>;
 
       public:
         using base::base;
@@ -97,8 +97,8 @@ namespace asiochan
         public detail::channel_method_ops<T, Executor, buff_size, readable, basic_read_channel<T, buff_size, Executor>>
     {
       private:
-        using base = basic_read_channel::channel_base;
-        using ops = basic_read_channel::channel_method_ops;
+        using base = channel_base<T, buff_size, readable, Executor>;
+        using ops = detail::channel_method_ops<T, Executor, buff_size, readable, basic_read_channel<T, buff_size, Executor>>;
 
       public:
         using base::base;
@@ -114,8 +114,8 @@ namespace asiochan
         public detail::channel_method_ops<T, Executor, buff_size, writable, basic_write_channel<T, buff_size, Executor>>
     {
       private:
-        using base = basic_write_channel::channel_base;
-        using ops = basic_write_channel::channel_method_ops;
+        using base = channel_base<T, buff_size, writable, Executor>;
+        using ops = detail::channel_method_ops<T, Executor, buff_size, writable, basic_write_channel<T, buff_size, Executor>>;
 
       public:
         using base::base;

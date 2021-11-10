@@ -39,7 +39,8 @@ namespace asiochan
                auto* const submit_mutex,
                auto* const wait_ctx,
                auto* const ops_wait_states,
-               auto* const... ops_args) {
+               auto* const... ops_args)
+            {
                 wait_ctx->promise = std::move(promise);
 
                 auto ready_token = std::optional<std::size_t>{};
@@ -47,24 +48,26 @@ namespace asiochan
                 {
                     auto const submit_lock = std::scoped_lock{*submit_mutex};
 
-                    ([&]<std::size_t... indices>(std::index_sequence<indices...>) {
-                        ([&]<std::size_t channel_index>(auto& op, detail::constant<channel_index>) {
-                            constexpr auto op_base_token = detail::select_ops_base_tokens<Ops...>[channel_index];
+                    ([&]<std::size_t... indices>(std::index_sequence<indices...>)
+                     {
+                         ([&]<std::size_t channel_index>(auto& op, detail::constant<channel_index>)
+                          {
+                              constexpr auto op_base_token = detail::select_ops_base_tokens<Ops...>[channel_index];
 
-                            if (auto const ready_alternative = op.submit_with_wait(
-                                    *wait_ctx,
-                                    op_base_token,
-                                    std::get<channel_index>(*ops_wait_states)))
-                            {
-                                ready_token = op_base_token + *ready_alternative;
+                              if (auto const ready_alternative = op.submit_with_wait(
+                                      *wait_ctx,
+                                      op_base_token,
+                                      std::get<channel_index>(*ops_wait_states)))
+                              {
+                                  ready_token = op_base_token + *ready_alternative;
 
-                                return true;
-                            }
+                                  return true;
+                              }
 
-                            return false;
-                        }(*ops_args, detail::constant<indices>{})
-                         or ...);
-                    }(std::index_sequence_for<Ops...>{}));
+                              return false;
+                          }(*ops_args, detail::constant<indices>{})
+                          or ...);
+                     }(std::index_sequence_for<Ops...>{}));
                 }
 
                 if (ready_token)
@@ -79,25 +82,27 @@ namespace asiochan
 
         auto const submit_lock = std::scoped_lock{submit_mutex};
 
-        ([&]<std::size_t... indices>(std::index_sequence<indices...>) {
-            ([&]<select_op Op, std::size_t channel_index>(Op& op, detail::constant<channel_index>) {
-                constexpr auto op_base_token = detail::select_ops_base_tokens<Ops...>[channel_index];
+        ([&]<std::size_t... indices>(std::index_sequence<indices...>)
+         {
+             ([&]<select_op Op, std::size_t channel_index>(Op& op, detail::constant<channel_index>)
+              {
+                  constexpr auto op_base_token = detail::select_ops_base_tokens<Ops...>[channel_index];
 
-                auto successful_alternative = std::optional<std::size_t>{};
+                  auto successful_alternative = std::optional<std::size_t>{};
 
-                if (success_token >= op_base_token
-                    and success_token < op_base_token + Op::num_alternatives)
-                {
-                    successful_alternative = success_token - op_base_token;
-                    result.emplace(op.get_result(*successful_alternative), success_token);
-                }
+                  if (success_token >= op_base_token
+                      and success_token < op_base_token + Op::num_alternatives)
+                  {
+                      successful_alternative = success_token - op_base_token;
+                      result.emplace(op.get_result(*successful_alternative), success_token);
+                  }
 
-                op.clear_wait(
-                    successful_alternative,
-                    std::get<channel_index>(ops_wait_states));
-            }(ops_args, detail::constant<indices>{}),
-             ...);
-        }(std::index_sequence_for<Ops...>{}));
+                  op.clear_wait(
+                      successful_alternative,
+                      std::get<channel_index>(ops_wait_states));
+              }(ops_args, detail::constant<indices>{}),
+              ...);
+         }(std::index_sequence_for<Ops...>{}));
 
         assert(result.has_value());
 
@@ -112,23 +117,25 @@ namespace asiochan
     {
         auto result = std::optional<select_result<Ops...>>{};
 
-        ([&]<std::size_t... indices>(std::index_sequence<indices...>) {
-            ([&]<std::size_t channel_index>(auto& op, detail::constant<channel_index>) {
-                constexpr auto op_base_token = detail::select_ops_base_tokens<Ops...>[channel_index];
+        ([&]<std::size_t... indices>(std::index_sequence<indices...>)
+         {
+             ([&]<std::size_t channel_index>(auto& op, detail::constant<channel_index>)
+              {
+                  constexpr auto op_base_token = detail::select_ops_base_tokens<Ops...>[channel_index];
 
-                if (auto const ready_alternative = op.submit_if_ready())
-                {
-                    result.emplace(
-                        op.get_result(*ready_alternative),
-                        op_base_token + *ready_alternative);
+                  if (auto const ready_alternative = op.submit_if_ready())
+                  {
+                      result.emplace(
+                          op.get_result(*ready_alternative),
+                          op_base_token + *ready_alternative);
 
-                    return true;
-                }
+                      return true;
+                  }
 
-                return false;
-            }(ops_args, detail::constant<indices>{})
-             or ...);
-        }(std::index_sequence_for<Ops...>{}));
+                  return false;
+              }(ops_args, detail::constant<indices>{})
+              or ...);
+         }(std::index_sequence_for<Ops...>{}));
 
         assert(result.has_value());
 
