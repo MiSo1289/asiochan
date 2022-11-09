@@ -118,8 +118,6 @@ namespace asiochan
         [[nodiscard]] auto matches(T const& channel) const noexcept -> bool
         // clang-format on
         {
-            using SendType = typename T::send_type;
-
             return std::visit(
                 [&](auto const& result)
                 { return result.matches(channel); },
