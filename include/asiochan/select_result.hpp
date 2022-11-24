@@ -32,7 +32,7 @@ namespace asiochan
         using discriminator_type = std::size_t;
 
         template <typename T>
-        static constexpr auto is_alternative = (std::same_as<T, typename Ops::result_type> or ...);
+        static constexpr bool is_alternative = (std::same_as<T, typename Ops::result_type> or ...);
 
         template <std::convertible_to<variant_type> T>
         select_result(T&& value, discriminator_type const alternative)
