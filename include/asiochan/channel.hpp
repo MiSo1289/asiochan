@@ -55,6 +55,11 @@ namespace asiochan
             return *shared_state_;
         }
 
+        [[nodiscard]] auto shared_state() const noexcept -> const shared_state_type&
+        {
+            return *shared_state_;
+        }
+
         [[nodiscard]] friend auto operator==(
             channel_base const& lhs,
             channel_base const& rhs) noexcept -> bool
